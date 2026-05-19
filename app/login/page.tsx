@@ -9,6 +9,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("alwin@petaid.local");
   const [password, setPassword] = useState("petaid-demo-2026");
+  const [mfaToken, setMfaToken] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -17,10 +19,21 @@ export default function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      await login(email, password);
+      await login(email, password, mfaToken || undefined);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Login failed");
+      if (err instanceof ApiError) {
+        if (err.code === "mfa_required") {
+          setMfaRequired(true);
+          setError("Enter your one-time code to continue.");
+        } else if (err.code === "account_locked") {
+          setError(`${err.message}`);
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError("Login failed");
+      }
     } finally {
       setPending(false);
     }
@@ -52,6 +65,25 @@ export default function LoginPage() {
           required
         />
 
+        {mfaRequired && (
+          <>
+            <label htmlFor="mfa">One-time code</label>
+            <input
+              id="mfa"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              autoComplete="one-time-code"
+              value={mfaToken}
+              onChange={(e) => setMfaToken(e.target.value)}
+              required
+            />
+            <small style={{ color: "var(--t3)", fontSize: 11 }}>
+              Demo vet account: <code>123456</code>
+            </small>
+          </>
+        )}
+
         {error && <div className="err">{error}</div>}
 
         <button type="submit" disabled={pending}>
@@ -60,6 +92,9 @@ export default function LoginPage() {
 
         <div className="switch">
           New to PetAid? <Link href="/register">Create account</Link>
+        </div>
+        <div className="switch" style={{ marginTop: 8 }}>
+          Vet demo: <code>vet@petaid.local</code> / <code>petaid-vet-2026</code>
         </div>
       </form>
     </div>

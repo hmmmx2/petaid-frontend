@@ -4,12 +4,14 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, register } from "@/lib/api";
+import type { Role } from "@/lib/types";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("pet_owner");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -18,7 +20,7 @@ export default function RegisterPage() {
     setError(null);
     setPending(true);
     try {
-      await register(email, password, fullName);
+      await register({ email, password, fullName, role });
       router.push("/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Registration failed");
@@ -38,6 +40,7 @@ export default function RegisterPage() {
           id="full_name"
           type="text"
           autoComplete="name"
+          maxLength={120}
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           required
@@ -63,6 +66,29 @@ export default function RegisterPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
+
+        <label htmlFor="role">I am a…</label>
+        <select
+          id="role"
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 9,
+            border: "1px solid var(--border2)",
+            background: "var(--tech)",
+            fontSize: 13,
+          }}
+        >
+          <option value="pet_owner">Pet Owner</option>
+          <option value="veterinary_expert">Veterinary Expert</option>
+        </select>
+        {role === "veterinary_expert" && (
+          <small style={{ color: "var(--t3)", fontSize: 11 }}>
+            Vet accounts require MFA at login. Demo code: <code>123456</code>
+          </small>
+        )}
 
         {error && <div className="err">{error}</div>}
 

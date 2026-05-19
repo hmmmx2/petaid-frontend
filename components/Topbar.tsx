@@ -1,4 +1,4 @@
-import s from "@/app/dashboard/dashboard.module.css";
+import s from "@/app/(app)/dashboard.module.css";
 import { BellIcon, SearchIcon } from "./icons";
 import type { UserSummary } from "@/lib/types";
 

@@ -1,4 +1,4 @@
-import s from "@/app/dashboard/dashboard.module.css";
+import s from "@/app/(app)/dashboard.module.css";
 import type { StatCards as StatCardsT } from "@/lib/types";
 
 export function StatCards({ stats }: { stats: StatCardsT }) {

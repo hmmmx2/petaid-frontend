@@ -1,4 +1,4 @@
-import s from "@/app/dashboard/dashboard.module.css";
+import s from "@/app/(app)/dashboard.module.css";
 import type { ChatThread, ReadinessItem, Reminder } from "@/lib/types";
 import { CalendarIcon, FileIcon } from "./icons";
 
