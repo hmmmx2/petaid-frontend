@@ -70,9 +70,15 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
     try {
       const res = await petaid.register({ name: reg.name, email: reg.email, password: reg.password, role: reg.role });
       setPendingEmail(reg.email);
-      setHintCode(res.verification_code);
+      setHintCode(res.verification_code || "");
       setMode("verify");
-      setBanner({ kind: "info", text: `Demo: your verification code is ${res.verification_code}` });
+      // The code is only returned in non-production builds (no mail server in
+      // dev). In production it arrives by email and is never shown here.
+      setBanner(
+        res.verification_code
+          ? { kind: "info", text: `Dev only — your verification code is ${res.verification_code}` }
+          : { kind: "info", text: "We've emailed you a 6-digit verification code." },
+      );
     } catch (e) {
       if (e instanceof ApiError && e.code === "invalid_input") setRegErrors(fieldErr(e));
       else setBanner({ kind: "error", text: e instanceof Error ? e.message : "Could not create account." });
@@ -89,12 +95,6 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       if (e instanceof ApiError && e.code === "invalid_input") setVerifyErrors(fieldErr(e));
       else setBanner({ kind: "error", text: e instanceof Error ? e.message : "Verification failed." });
     }
-  }
-
-  function applyDemo(email: string, password: string) {
-    setLoginEmail(email);
-    setLoginPassword(password);
-    setMode("login");
   }
 
   return (
@@ -146,17 +146,9 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
               <button className="btn-primary" onClick={() => submitLogin()}>Sign in</button>
 
               <div className="demo-block" style={{ background: "transparent", border: "1px dashed var(--line-2)", padding: 18, marginTop: 22 }}>
-                <strong style={{ display: "block", marginBottom: 8, fontSize: 13 }}>Try a demo account</strong>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                  <button className="btn-secondary" style={{ fontSize: 12.5, width: "auto", padding: "7px 12px" }} onClick={() => applyDemo("alwin@petaid.com", "pet123")}>
-                    Pet Owner →
-                  </button>
-                  <button className="btn-secondary" style={{ fontSize: 12.5, width: "auto", padding: "7px 12px" }} onClick={() => applyDemo("kavitha@petaid.com", "vet123")}>
-                    Vet Expert → <span style={{ color: "var(--ink-3)" }}>(MFA 123456)</span>
-                  </button>
-                </div>
+                <strong style={{ display: "block", marginBottom: 6, fontSize: 13 }}>Need first-aid help right now?</strong>
                 <p style={{ fontSize: 12.5, color: "var(--ink-2)", margin: "0 0 12px", lineHeight: 1.4 }}>
-                  Or browse the public first-aid library without an account.
+                  Browse the public first-aid library without an account. No personal data is stored.
                 </p>
                 <button className="btn-secondary" onClick={onGuest} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, width: "auto", padding: "8px 14px" }}>
                   Continue as guest <span style={{ color: "var(--ink-3)" }}>→</span>

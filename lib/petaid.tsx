@@ -305,7 +305,7 @@ export async function loadSnapshot(): Promise<Snapshot> {
 export const petaid = {
   async register(payload: { name: string; email: string; password: string; role: Role }) {
     const apiRole = payload.role === "vet_expert" ? "veterinary_expert" : "pet_owner";
-    return rawReq<{ email: string; verification_code: string; message: string }>(
+    return rawReq<{ email: string; verification_code: string | null; message: string }>(
       "/api/v1/auth/register",
       { method: "POST", body: JSON.stringify({ full_name: payload.name, email: payload.email, password: payload.password, role: apiRole }) },
       null,
