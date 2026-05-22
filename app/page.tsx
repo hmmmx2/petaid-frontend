@@ -1,15 +1,42 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { getAccessToken } from "@/lib/api";
+/* Root — 1:1 port of views/99-app.jsx state machine.
+   Picks Welcome / Guest / PetOwner / VetExpert from the controller snapshot. */
+import { useState } from "react";
+import { PetAidProvider, usePetAid } from "@/lib/petaid";
+import { ToastProvider } from "@/components/ui";
+import { Welcome } from "@/components/views/Welcome";
+import { Guest } from "@/components/views/Guest";
+import { PetOwner } from "@/components/views/PetOwner";
+import { VetExpert } from "@/components/views/VetExpert";
 
-export default function HomePage() {
-  const router = useRouter();
+function AppInner() {
+  const { snapshot, loading, refresh } = usePetAid();
+  const [guestMode, setGuestMode] = useState(false);
 
-  useEffect(() => {
-    router.replace(getAccessToken() ? "/dashboard" : "/login");
-  }, [router]);
+  if (loading || !snapshot) {
+    return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--ink-3)", fontSize: 14 }}>Loading PetAid…</div>;
+  }
 
-  return <div className="loading">Loading…</div>;
+  if (guestMode && !snapshot.account) {
+    return <Guest onSignIn={() => setGuestMode(false)} />;
+  }
+
+  if (!snapshot.account) {
+    return <Welcome onAuthed={() => { setGuestMode(false); refresh(); }} onGuest={() => setGuestMode(true)} />;
+  }
+
+  return snapshot.role === "vet_expert"
+    ? <VetExpert snapshot={snapshot} />
+    : <PetOwner snapshot={snapshot} />;
+}
+
+export default function Page() {
+  return (
+    <ToastProvider>
+      <PetAidProvider>
+        <AppInner />
+      </PetAidProvider>
+    </ToastProvider>
+  );
 }
