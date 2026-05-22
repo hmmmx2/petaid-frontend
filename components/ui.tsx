@@ -40,6 +40,7 @@ const ICONS: Record<string, ReactNode> = {
   inquiry: (<><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></>),
   calendar: (<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>),
   more: (<><circle cx="12" cy="6" r="1.2" fill="currentColor" /><circle cx="12" cy="12" r="1.2" fill="currentColor" /><circle cx="12" cy="18" r="1.2" fill="currentColor" /></>),
+  menu: (<><path d="M3 6h18M3 12h18M3 18h18" /></>),
   upload: (<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></>),
   edit: (<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z" /></>),
   chevron: (<><path d="m9 18 6-6-6-6" /></>),
@@ -74,6 +75,25 @@ export const Icon = ({
     {ICONS[name] || null}
   </svg>
 );
+
+/* ---------- a11y helper ----------
+   Spread onto a non-button element (a clickable card/row) so keyboard and
+   screen-reader users can activate it with Enter/Space — satisfies WCAG
+   2.1.1 (Keyboard). Use only for elements that genuinely act like buttons. */
+export function clickable(onActivate: () => void, label?: string) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    "aria-label": label,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+  };
+}
 
 /* ---------- Modal ---------- */
 export const Modal = ({

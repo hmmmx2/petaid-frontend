@@ -90,6 +90,7 @@ type ApiResource = { id: string; title: string; content_type: string; status: st
 type ApiGuidance = { id: string; title: string; emergency_type: string; summary: string; steps: string[]; pet_type: ApiPetType; resources: ApiResource[] };
 type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
 type ApiQuiz = { id: string; title: string; passing_score: number; resource_id: string; questions: ApiQuizQ[] };
+type ApiQuizAttempt = { id: string; quiz_id: string; score_pct: number; passed: boolean; completed_at: string };
 type ApiInquiry = { id: string; subject: string; question: string; response: string | null; status: string; submitted_at: string; responded_at: string | null; closed_at: string | null };
 type ApiChatMsg = { id: string; sender_id: string; body: string; sent_at: string };
 type ApiChat = { id: string; subject: string; status: string; started_at: string; ended_at: string | null; messages: ApiChatMsg[] };
@@ -145,6 +146,15 @@ export type Dashboard = {
 };
 export type Snapshot = { account: Account | null; role: Role | null; dashboard: Dashboard | null };
 
+/* ----------------------------------------------------------- currency */
+/** Single source of truth for the platform currency. The donation form
+ *  charges in this currency; display falls back to a donation's own currency
+ *  so any legacy/mixed-currency records still render honestly. */
+export const PLATFORM_CURRENCY = "MYR";
+const CURRENCY_SYMBOL: Record<string, string> = { MYR: "RM ", USD: "$", SGD: "S$", EUR: "€", GBP: "£" };
+export const money = (amount: number, currency: string = PLATFORM_CURRENCY): string =>
+  `${CURRENCY_SYMBOL[currency] ?? `${currency} `}${(amount ?? 0).toFixed(2)}`;
+
 /* ----------------------------------------------------------- mappers */
 const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : 0);
 const normRole = (r: string): Role => (r === "veterinary_expert" || r === "vet_expert" ? "vet_expert" : "pet_owner");
@@ -186,11 +196,12 @@ const mapFeedback = (f: ApiFeedback): Feedback => ({
 
 /* ----------------------------------------------------------- controller */
 async function loadPetOwnerSnapshot(user: ApiUser, stats: any): Promise<Snapshot> {
-  const [petsR, guideR, resR, quizR, inqR, chatR, donR, ptR] = await Promise.all([
+  const [petsR, guideR, resR, quizR, attR, inqR, chatR, donR, ptR] = await Promise.all([
     req<ApiPet[]>("/api/v1/pets"),
     req<ApiGuidance[]>("/api/v1/first-aid"),
     req<ApiResource[]>("/api/v1/resources"),
     req<ApiQuiz[]>("/api/v1/quizzes"),
+    req<ApiQuizAttempt[]>("/api/v1/quizzes/attempts"),
     req<ApiInquiry[]>("/api/v1/inquiries"),
     req<ApiChat[]>("/api/v1/chats"),
     req<ApiDonation[]>("/api/v1/donations"),
@@ -200,6 +211,7 @@ async function loadPetOwnerSnapshot(user: ApiUser, stats: any): Promise<Snapshot
   const guidance = guideR.map(mapGuidance);
   const resources = resR.map(mapResource);
   const quizzes = quizR.map(mapQuiz);
+  const attempts = attR.map((a): QuizAttempt => ({ quizId: a.quiz_id, score: a.score_pct, passed: a.passed, takenAt: ms(a.completed_at) }));
   const petTypes = ptR.map((t) => ({ id: t.id, name: t.name, emoji: t.icon_emoji, bg: t.icon_bg }));
   const panels: PetOwnerPanels = {
     pets,
@@ -207,7 +219,7 @@ async function loadPetOwnerSnapshot(user: ApiUser, stats: any): Promise<Snapshot
     guidance,
     resources,
     quizzes,
-    attempts: [],
+    attempts,
     inquiries: inqR.map(mapInquiry),
     chats: chatR.map(mapChat),
     donations: donR.map(mapDonation),
@@ -287,6 +299,15 @@ export const petaid = {
     return rawReq<{ email: string; verification_code: string | null; message: string }>(
       "/api/v1/auth/register",
       { method: "POST", body: JSON.stringify({ full_name: payload.name, email: payload.email, password: payload.password, role: apiRole }) },
+      null,
+    );
+  },
+  /** Re-issue a verification code (rate-limited server-side). In dev the new
+   *  code is returned; in production it's delivered by email (code is null). */
+  async resendVerification(email: string) {
+    return rawReq<{ email: string; verification_code: string | null; message: string }>(
+      "/api/v1/auth/resend-verification",
+      { method: "POST", body: JSON.stringify({ email }) },
       null,
     );
   },

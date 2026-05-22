@@ -825,6 +825,16 @@ a { color: inherit; text-decoration: none; }
 .li-title { font-size: 14px; font-weight: 600; }
 .li-meta { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
 .li-aside { color: var(--ink-3); font-size: 12px; font-family: var(--font-mono); }
+.best-score {
+  margin-left: auto;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 3px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  white-space: nowrap;
+}
 
 .star-row { display: flex; gap: 4px; }
 .star-row button {
@@ -1771,6 +1781,105 @@ html.reduce-motion *::after {
   .admin-kanban { grid-template-columns: 1fr; }
 }
 
+/* ============================================================
+   RESPONSIVE — tablet & mobile
+   The design is desktop-first; below 900px the fixed sidebar
+   becomes an off-canvas drawer toggled from the topbar, and the
+   dense multi-column grids collapse so nothing overflows.
+============================================================ */
+.nav-toggle { display: none; }
+.nav-backdrop { display: none; }
+
+@media (max-width: 900px) {
+  .app-shell,
+  .admin-shell { grid-template-columns: 1fr; }
+
+  .sidebar,
+  .admin-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 268px;
+    max-width: 84vw;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.24s ease;
+  }
+  .sidebar.open,
+  .admin-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 2px 0 28px rgba(20, 18, 16, 0.22);
+  }
+
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(20, 18, 16, 0.42);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.24s ease;
+  }
+  .nav-backdrop.open { opacity: 1; pointer-events: auto; }
+
+  .nav-toggle {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    border: 1px solid var(--line);
+    background: var(--white);
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .nav-toggle:hover { color: var(--ink); border-color: var(--ink-4); }
+
+  .topbar,
+  .admin-topbar {
+    padding-left: 16px;
+    padding-right: 16px;
+    gap: 10px;
+  }
+  .topbar h1,
+  .admin-topbar h1 { font-size: 15px; }
+
+  /* Auth/login: drop the decorative art panel, single-column form. */
+  .auth-stage { grid-template-columns: 1fr; }
+  .auth-art { display: none; }
+  .auth-pane { padding: 36px 22px; }
+
+  /* Collapse dense, fixed-count grids (both class- and inline-styled). */
+  .hero { grid-template-columns: 1fr; }
+  .hero-div { display: none; }
+  .board { grid-template-columns: repeat(2, 1fr); }
+  .amount-grid { grid-template-columns: repeat(2, 1fr); }
+  .admin-kpi-row { grid-template-columns: 1fr 1fr; }
+  .admin-grid-2,
+  .admin-kanban { grid-template-columns: 1fr; }
+  .settings-page { grid-template-columns: 1fr; }
+
+  /* `!important` is required to override component inline grid styles. */
+  [style*="repeat(4,"],
+  [style*="repeat(5,"],
+  [style*="repeat(3,"] { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media (max-width: 540px) {
+  .board,
+  .amount-grid,
+  .admin-kpi-row { grid-template-columns: 1fr; }
+
+  [style*="repeat(4,"],
+  [style*="repeat(5,"],
+  [style*="repeat(3,"],
+  [style*="repeat(2,"] { grid-template-columns: 1fr !important; }
+
+  .topbar,
+  .admin-topbar { padding-left: 12px; padding-right: 12px; }
+}
+
 /* ============== GUEST MODE ============== */
 .guest-shell {
   min-height: 100vh;
@@ -2248,6 +2357,7 @@ html.reduce-motion *::after {
 .settings-switch {
   width: 36px;
   height: 20px;
+  padding: 0;
   background: var(--ink-4);
   border-radius: 10px;
   position: relative;

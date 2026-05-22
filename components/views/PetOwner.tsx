@@ -4,8 +4,8 @@
    Covers SRS §7.1/7.2/7.4/7.5/7.6/7.7. */
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ApiError, petaid, usePetAid, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
-import { Field, Icon, Modal, StarRow, relTime, maskReference, useToast } from "@/components/ui";
+import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
+import { Field, Icon, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -16,9 +16,10 @@ const SCENARIO_ICONS: Record<string, string> = {
 const RES_ICON = (t: string) => (t === "video" ? "book" : t === "images" || t === "image" ? "paw" : "book");
 
 /* ---------- Sidebar ---------- */
-function POSidebar({ active, setActive, panels, account, onLogout }: any) {
+function POSidebar({ active, setActive, panels, account, onLogout, open, onClose }: any) {
+  const go = (id: string) => { setActive(id); onClose?.(); };
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${open ? "open" : ""}`}>
       <div className="brand">
         <div className="brand-mark"><Image src="/petaid-logo.png" alt="PetAid" width={36} height={36} /></div>
         <div>
@@ -37,7 +38,7 @@ function POSidebar({ active, setActive, panels, account, onLogout }: any) {
           { id: "chats", label: "Vet Chat", icon: "chat" },
           { id: "donations", label: "Donations", icon: "gift" },
         ].map((it: any) => (
-          <button key={it.id} className={`nav-item ${active === it.id ? "active" : ""}`} onClick={() => setActive(it.id)}>
+          <button key={it.id} className={`nav-item ${active === it.id ? "active" : ""}`} onClick={() => go(it.id)}>
             <Icon name={it.icon} size={16} />
             <span>{it.label}</span>
             {it.count != null && it.count > 0 && <span className="nav-count">{it.count}</span>}
@@ -61,7 +62,7 @@ function POSidebar({ active, setActive, panels, account, onLogout }: any) {
       <div className="profile-row">
         <div className="avatar">{account.name.split(" ").map((s: string) => s[0]).slice(0, 2).join("")}</div>
         <div className="name">{account.name}<span>{account.email || "alwin@petaid.com"}</span></div>
-        <button className="logout" title="Sign out" onClick={onLogout}><Icon name="sign_out" size={14} /></button>
+        <button className="logout" title="Sign out" aria-label="Sign out" onClick={onLogout}><Icon name="sign_out" size={14} /></button>
       </div>
     </aside>
   );
@@ -328,7 +329,7 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
   if (result) {
     const ok = result.success;
     return (
-      <Modal title={ok ? "Thank you for your support" : "Payment could not be processed"} subtitle={ok ? `MYR ${result.amount.toFixed(2)} received.` : "You haven't been charged."} onClose={onClose}
+      <Modal title={ok ? "Thank you for your support" : "Payment could not be processed"} subtitle={ok ? `${money(result.amount)} received.` : "You haven't been charged."} onClose={onClose}
         footer={<button className="btn-primary" onClick={onClose}>Close</button>}>
         {ok ? (
           <>
@@ -346,7 +347,7 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Donate</button></>}>
       <Field label="Amount (MYR)">
         <div className="amount-grid">
-          {presets.map((p) => <button key={p} type="button" className={!custom && amount === p ? "selected" : ""} onClick={() => { setAmount(p); setCustom(""); }}>RM {p}</button>)}
+          {presets.map((p) => <button key={p} type="button" className={!custom && amount === p ? "selected" : ""} onClick={() => { setAmount(p); setCustom(""); }}>{money(p)}</button>)}
         </div>
         <input value={custom} onChange={(e) => setCustom(e.target.value)} type="number" min="1" placeholder="Custom amount" />
       </Field>
@@ -361,7 +362,7 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
       {error && <div className="banner error">{error}</div>}
       {donations.length > 0 && (
         <div style={{ marginTop: 12, fontSize: 12, color: "var(--ink-3)" }}>
-          Total donated to date: <strong style={{ color: "var(--ink)" }}>RM {donations.filter((d: any) => d.status === "succeeded").reduce((s: number, d: any) => s + d.amount, 0).toFixed(2)}</strong> across {donations.length} contribution{donations.length === 1 ? "" : "s"}.
+          Total donated to date: <strong style={{ color: "var(--ink)" }}>{money(donations.filter((d: any) => d.status === "succeeded").reduce((s: number, d: any) => s + d.amount, 0))}</strong> across {donations.length} contribution{donations.length === 1 ? "" : "s"}.
         </div>
       )}
     </Modal>
@@ -432,6 +433,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const account = snapshot.account!;
 
   const [active, setActive] = useState("dashboard");
+  const [navOpen, setNavOpen] = useState(false);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showAddPet, setShowAddPet] = useState(false);
   const [showInquiry, setShowInquiry] = useState(false);
@@ -473,7 +475,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   };
   const handleDonate = async (amount: number, recurring: boolean) => {
     try {
-      const d = await petaid.donate(Math.round(amount * 100), "MYR", recurring);
+      const d = await petaid.donate(Math.round(amount * 100), PLATFORM_CURRENCY, recurring);
       await refresh();
       return { success: true, amount: d.amount_cents / 100, reference: d.transaction_ref };
     } catch (e) {
@@ -482,15 +484,32 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     }
   };
   const handleStartChat = async () => {
-    const c = await petaid.startChat("Vet chat");
-    await refresh();
-    setOpenChatId(c.id);
+    try {
+      const c = await petaid.startChat("Vet chat");
+      await refresh();
+      setOpenChatId(c.id);
+    } catch (e) {
+      push(e instanceof Error ? e.message : "Couldn't start the chat. Please try again.", "danger");
+    }
   };
   const handleSendChat = async (t: string) => {
-    if (openChatId) { await petaid.postChatMessage(openChatId, t); await refresh(); }
+    if (!openChatId) return;
+    try {
+      await petaid.postChatMessage(openChatId, t);
+      await refresh();
+    } catch (e) {
+      push(e instanceof Error ? e.message : "Message failed to send.", "danger");
+    }
   };
   const handleCloseChat = async () => {
-    if (openChatId) { await petaid.closeChat(openChatId); await refresh(); setOpenChatId(null); }
+    if (!openChatId) return;
+    try {
+      await petaid.closeChat(openChatId);
+      await refresh();
+      setOpenChatId(null);
+    } catch (e) {
+      push(e instanceof Error ? e.message : "Couldn't close the chat.", "danger");
+    }
   };
   const handleFeedback = async ({ rating, comment, flagged }: any) => {
     await petaid.submitFeedback({ target_type: "resource", target_id: feedbackTarget!.id, rating, comment, flagged });
@@ -517,9 +536,11 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   return (
     <>
       <div className="app-shell">
-        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} />
+        <div className={`nav-backdrop ${navOpen ? "open" : ""}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
+        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} />
         <main className="main">
           <div className="topbar">
+            <button className="nav-toggle" aria-label="Open navigation" onClick={() => setNavOpen(true)}><Icon name="menu" size={18} /></button>
             <h1>{header.greeting} <span>· {titleMap[active] || "Overview"}</span></h1>
             <div className="grow" />
             <button className="emergency-btn" onClick={() => setShowEmergency(true)}><Icon name="alert" size={14} stroke={2} /> Emergency</button>
@@ -548,7 +569,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
               <div className="section-title"><h2>Recent inquiries</h2><button className="btn-ghost" onClick={() => setActive("inquiries")}>View all</button></div>
               <div style={{ padding: "0 28px" }}>
                 {panels.inquiries.slice(0, 3).map((i) => (
-                  <div className="list-item" key={i.id} onClick={() => setOpenInquiry(i)}>
+                  <div className="list-item" key={i.id} {...clickable(() => setOpenInquiry(i))}>
                     <div className="li-icon"><Icon name="mail" size={15} /></div>
                     <div className="li-body"><div className="li-title">{i.question.slice(0, 80)}{i.question.length > 80 ? "…" : ""}</div><div className="li-meta"><StatusPill status={i.status} /> · {relTime(i.createdAt)}</div></div>
                   </div>
@@ -570,7 +591,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
               <div className="section-title"><h2>First aid library</h2></div>
               <div style={{ padding: "0 28px" }}>
                 {panels.guidance.map((g) => (
-                  <div className="list-item" key={g.id} onClick={() => setShowEmergency(true)}>
+                  <div className="list-item" key={g.id} {...clickable(() => setShowEmergency(true))}>
                     <div className="li-icon"><Icon name={SCENARIO_ICONS[g.emergencyType] || "first_aid"} size={16} /></div>
                     <div className="li-body"><div className="li-title">{g.title}</div><div className="li-meta">{g.steps.length} steps · {g.emergencyType}</div></div>
                   </div>
@@ -600,9 +621,16 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
               <div className="section-title"><h2>Quizzes</h2></div>
               <div style={{ padding: "0 28px" }}>
                 {panels.quizzes.map((q) => (
-                  <div className="list-item" key={q.id} onClick={() => setOpenQuiz(q)}>
+                  <div className="list-item" key={q.id} {...clickable(() => setOpenQuiz(q))}>
                     <div className="li-icon"><Icon name="quiz" size={16} /></div>
                     <div className="li-body"><div className="li-title">{q.title}</div><div className="li-meta">{q.questions.length} questions · pass at {q.passingScore}%</div></div>
+                    {(() => {
+                      const mine = panels.attempts.filter((a) => a.quizId === q.id);
+                      if (!mine.length) return null;
+                      const best = Math.max(...mine.map((a) => a.score));
+                      const passed = best >= q.passingScore;
+                      return <span className="best-score" style={{ color: passed ? "var(--success)" : "var(--ink-3)", borderColor: passed ? "var(--success)" : "var(--line-2)" }}>Best {best}%</span>;
+                    })()}
                   </div>
                 ))}
                 {panels.quizzes.length === 0 && <div className="empty-state"><strong>No quizzes yet.</strong></div>}
@@ -616,7 +644,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
               <div style={{ padding: "0 28px" }}>
                 {panels.inquiries.length === 0 && <div className="empty-state"><strong>No inquiries yet.</strong>Submit one and a vet will respond.</div>}
                 {panels.inquiries.map((i) => (
-                  <div className="list-item" key={i.id} onClick={() => setOpenInquiry(i)}>
+                  <div className="list-item" key={i.id} {...clickable(() => setOpenInquiry(i))}>
                     <div className="li-icon"><Icon name="mail" size={16} /></div>
                     <div className="li-body"><div className="li-title">{i.question.slice(0, 90)}{i.question.length > 90 ? "…" : ""}</div><div className="li-meta"><StatusPill status={i.status} /> · submitted {relTime(i.createdAt)}{i.respondedAt ? ` · responded ${relTime(i.respondedAt)}` : ""}</div></div>
                     <Icon name="chevron" size={14} stroke={1.5} />
@@ -632,7 +660,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
               <div style={{ padding: "0 28px" }}>
                 {panels.chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong></div>}
                 {panels.chats.map((c) => (
-                  <div className="list-item" key={c.id} onClick={() => setOpenChatId(c.id)}>
+                  <div className="list-item" key={c.id} {...clickable(() => setOpenChatId(c.id))}>
                     <div className="li-icon"><Icon name="chat" size={16} /></div>
                     <div className="li-body"><div className="li-title">{c.subject || "Vet chat"} · {c.messages.length} messages</div><div className="li-meta">{c.status} · started {relTime(c.startedAt)}</div></div>
                     <StatusPill status={c.status} />
@@ -650,7 +678,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
                 {panels.donations.map((d) => (
                   <div className="list-item" key={d.id}>
                     <div className="li-icon"><Icon name="gift" size={15} /></div>
-                    <div className="li-body"><div className="li-title">RM {d.amount.toFixed(2)}</div><div className="li-meta">{d.reference ? maskReference(d.reference) : "—"}{d.at ? ` · ${relTime(d.at)}` : ""}</div></div>
+                    <div className="li-body"><div className="li-title">{money(d.amount, d.currency)}</div><div className="li-meta">{d.reference ? maskReference(d.reference) : "—"}{d.at ? ` · ${relTime(d.at)}` : ""}</div></div>
                     <span className={`tag-pill ${d.status === "succeeded" ? "success" : d.status === "failed" ? "danger" : "warning"}`}>{d.status}</span>
                   </div>
                 ))}

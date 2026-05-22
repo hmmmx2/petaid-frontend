@@ -114,7 +114,15 @@ function SectionSecurity({ account }: { account: Account }) {
 }
 
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return <div className={`settings-switch ${on ? "on" : ""}`} onClick={onClick} />;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={`settings-switch ${on ? "on" : ""}`}
+      onClick={onClick}
+    />
+  );
 }
 
 function SectionNotifs() {

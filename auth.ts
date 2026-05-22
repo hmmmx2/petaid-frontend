@@ -44,6 +44,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   session: { strategy: "jwt", maxAge: 14 * 24 * 3600 },
   pages: { signIn: "/" },
+  // A failed sign-in (bad password / MFA required / lockout) is expected
+  // control-flow, not a server fault. Auth.js logs every CredentialsSignin as
+  // an error with a full stack trace, which floods the server console on each
+  // mistyped login. Filter those out; keep real errors and warnings.
+  logger: {
+    error(error: unknown) {
+      const tag = `${(error as any)?.type ?? ""} ${(error as any)?.name ?? ""} ${(error as any)?.message ?? ""}`;
+      if (/CredentialsSignin|mfa_required|account_locked/i.test(tag)) return;
+      console.error("[auth]", error);
+    },
+  },
   providers: [
     Credentials({
       credentials: { email: {}, password: {}, mfaToken: {} },

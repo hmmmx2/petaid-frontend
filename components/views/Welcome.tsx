@@ -94,6 +94,21 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
     }
   }
 
+  async function resendCode() {
+    setVerifyErrors({});
+    try {
+      const res = await petaid.resendVerification(pendingEmail);
+      setHintCode(res.verification_code || "");
+      setBanner(
+        res.verification_code
+          ? { kind: "info", text: `Dev only — your new verification code is ${res.verification_code}` }
+          : { kind: "info", text: "If your email is unverified, a new code is on its way." },
+      );
+    } catch (e) {
+      setBanner({ kind: "error", text: e instanceof Error ? e.message : "Could not resend the code." });
+    }
+  }
+
   async function submitVerification() {
     setVerifyErrors({});
     try {
@@ -220,7 +235,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
               <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => setMode("register")}>
                 ← Back to form
               </button>
-              <button className="btn-link" style={{ marginTop: 14, display: "block" }} onClick={() => setVerificationCode(hintCode)}>
+              <button className="btn-link" style={{ marginTop: 14, display: "block" }} onClick={resendCode}>
                 Didn&apos;t receive a code? Resend
               </button>
             </>

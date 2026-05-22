@@ -4,15 +4,16 @@
    Covers SRS §7.2 (respond), §7.3 (publish resource), §7.6 (chat). */
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ApiError, petaid, usePetAid, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
-import { Field, Icon, Modal, relTime, maskReference, useToast } from "@/components/ui";
+import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
+import { Field, Icon, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
 
 const SCENARIO_ICONS: Record<string, string> = { cardiac: "heart", poisoning: "alert", bleeding: "droplet", heatstroke: "thermometer", choking: "bone" };
 
-function AdminSidebar({ active, setActive, panels, account, onLogout }: any) {
+function AdminSidebar({ active, setActive, panels, account, onLogout, open, onClose, query, setQuery }: any) {
+  const go = (id: string) => { setActive(id); onClose?.(); };
   const items = [
     { id: "overview", label: "Overview", icon: "dashboard", count: 0 },
     { id: "inquiries", label: "Inquiries", icon: "mail", count: panels.inquiriesByStatus.pending.length, attention: panels.inquiriesByStatus.pending.length > 0 },
@@ -27,20 +28,21 @@ function AdminSidebar({ active, setActive, panels, account, onLogout }: any) {
     if (active === it.id) cls.push("active");
     if (it.attention) cls.push("has-attention");
     return (
-      <button key={it.id} className={cls.join(" ")} onClick={() => setActive(it.id)}>
+      <button key={it.id} className={cls.join(" ")} onClick={() => go(it.id)}>
         <Icon name={it.icon} size={16} /><span>{it.label}</span>{it.count > 0 && <span className="nav-count">{it.count}</span>}
       </button>
     );
   };
   return (
-    <aside className="admin-sidebar">
+    <aside className={`admin-sidebar ${open ? "open" : ""}`}>
       <div className="admin-brand">
         <div className="brand-mark"><Image src="/petaid-logo.png" alt="PetAid" width={36} height={36} /></div>
         <div><div className="brand-name">PetAid</div><div className="pill-role">Admin · Vet</div></div>
       </div>
       <div className="admin-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-        <input placeholder="Search inquiries, resources…" /><span className="kbd">⌘K</span>
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search inquiries, resources…" aria-label="Search the current view" />
+        {query ? <button className="kbd" onClick={() => setQuery("")} aria-label="Clear search" style={{ cursor: "pointer" }}>✕</button> : <span className="kbd">⌘K</span>}
       </div>
       <nav className="admin-nav">
         <div className="group-label">Workspace</div>
@@ -53,7 +55,7 @@ function AdminSidebar({ active, setActive, panels, account, onLogout }: any) {
       <div className="profile-row">
         <div className="avatar">{account.name.split(" ").map((s: string) => s[0]).slice(0, 2).join("")}</div>
         <div className="name">Dr. {account.name}<span>{account.speciality || "Veterinary expert"}</span></div>
-        <button className="logout" title="Sign out" onClick={() => { if (window.confirm("Sign out of PetAid?")) onLogout(); }}><Icon name="sign_out" size={14} /></button>
+        <button className="logout" title="Sign out" aria-label="Sign out" onClick={() => { if (window.confirm("Sign out of PetAid?")) onLogout(); }}><Icon name="sign_out" size={14} /></button>
       </div>
     </aside>
   );
@@ -91,7 +93,7 @@ function SlaChart() {
 function AdminInquiryCard({ inquiry, onOpen }: any) {
   const isUrgent = /emergency|bleed|urgent|asap|help|now|dying|poison/i.test(inquiry.question);
   return (
-    <div className="admin-inq-card" onClick={() => onOpen(inquiry)}>
+    <div className="admin-inq-card" {...clickable(() => onOpen(inquiry))}>
       <div className="top"><span className={`priority ${isUrgent ? "urgent" : "normal"}`}>{isUrgent ? "Urgent" : "Normal"}</span><span className="topic">#{inquiry.id.slice(-5).toUpperCase()}</span></div>
       <div className="text">{inquiry.question.slice(0, 100)}{inquiry.question.length > 100 ? "…" : ""}</div>
       {inquiry.response && <div className="reply">↳ {inquiry.response.slice(0, 90)}{inquiry.response.length > 90 ? "…" : ""}</div>}
@@ -187,6 +189,8 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const account = snapshot.account!;
 
   const [active, setActive] = useState("overview");
+  const [navOpen, setNavOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [openInquiry, setOpenInquiry] = useState<any>(null);
   const [showNewResource, setShowNewResource] = useState(false);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
@@ -246,18 +250,39 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
   const pendingCount = panels.inquiriesByStatus.pending.length;
   const publishedRes = panels.resources.filter((r) => r.status === "published").length;
-  const totalDonationAmt = panels.donations.reduce((s, d) => s + d.amount, 0);
+  // Group by currency so a mixed-currency dataset never sums into a single
+  // meaningless figure (DEF-11). On a single-currency platform this is one entry.
+  const donationByCurrency = panels.donations.reduce<Record<string, number>>((acc, d) => {
+    acc[d.currency] = (acc[d.currency] || 0) + d.amount;
+    return acc;
+  }, {});
+  const totalDonationStr =
+    Object.entries(donationByCurrency)
+      .map(([ccy, amt]) => money(amt, ccy))
+      .join(" · ") || money(0);
+  const platformDonationTotal = donationByCurrency[PLATFORM_CURRENCY] ?? 0;
   const sectionTitle: Record<string, string> = { overview: "Overview", inquiries: "Inquiries", chats: "Live chats", resources: "Resources", guidance: "Guidance library", feedback: "Feedback", donations: "Donations" };
   const cols = [
     { id: "pending", title: "Pending", tone: "attention", cards: panels.inquiriesByStatus.pending },
     { id: "responded", title: "Responded", tone: "sage", cards: panels.inquiriesByStatus.responded },
     { id: "closed", title: "Closed", tone: "", cards: panels.inquiriesByStatus.closed },
   ];
+  // Sidebar search filters the active section's list (DEF-14). Empty query
+  // matches everything, so these collapse to the full lists when not searching.
+  const q = query.trim().toLowerCase();
+  const matches = (...vals: (string | undefined | null)[]) =>
+    !q || vals.some((v) => (v || "").toLowerCase().includes(q));
+  const fCols = cols.map((c) => ({ ...c, cards: c.cards.filter((i) => matches(i.question, i.subject)) }));
+  const fResources = panels.resources.filter((r) => matches(r.title, r.contentType, r.petTypeName));
+  const fGuidance = panels.guidance.filter((g) => matches(g.title, g.emergencyType, ...g.petTypeNames));
+  const fFeedback = panels.flaggedFeedback.filter((f) => matches(f.comment, f.targetType));
+  const fChats = panels.activeChats.filter((c) => matches(c.subject));
+  const fDonations = panels.donations.filter((d) => matches(d.reference, d.currency));
   const activity = (() => {
     const items: any[] = [];
     panels.inquiriesByStatus.pending.slice(0, 4).forEach((i) => items.push({ icon: "mail", tone: "coral", text: <>New inquiry: <strong>&quot;{i.question.slice(0, 50)}…&quot;</strong></>, time: i.createdAt }));
     panels.activeChats.forEach((c) => items.push({ icon: "chat", tone: c.status === "initiated" ? "coral" : "sage", text: c.status === "initiated" ? <>Pet owner waiting to <strong>start chat</strong></> : <>Active chat session · {c.messages.length} messages</>, time: c.startedAt }));
-    panels.donations.slice(-3).forEach((d) => items.push({ icon: "gift", tone: "cream", text: <>Donation received: <strong>RM {d.amount.toFixed(2)}</strong></>, time: d.at || Date.now() }));
+    panels.donations.slice(-3).forEach((d) => items.push({ icon: "gift", tone: "cream", text: <>Donation received: <strong>{money(d.amount, d.currency)}</strong></>, time: d.at || Date.now() }));
     panels.flaggedFeedback.forEach((f) => items.push({ icon: "star", tone: "coral", text: <>Feedback flagged for review · <strong>{f.rating}★</strong></>, time: f.createdAt }));
     return items.sort((a, b) => b.time - a.time).slice(0, 8);
   })();
@@ -265,9 +290,11 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   return (
     <>
       <div className="admin-shell">
-        <AdminSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} />
+        <div className={`nav-backdrop ${navOpen ? "open" : ""}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
+        <AdminSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} query={query} setQuery={setQuery} />
         <main className="admin-main">
           <div className="admin-topbar">
+            <button className="nav-toggle" aria-label="Open navigation" onClick={() => setNavOpen(true)}><Icon name="menu" size={18} /></button>
             <div className="crumbs"><span>Admin</span><span className="chev">›</span><strong>{sectionTitle[active]}</strong></div>
             <div className="grow" />
             <span className="live-pill">On duty</span>
@@ -298,7 +325,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                   </div>
                   <div className="admin-kpi">
                     <div className="kpi-label">Donations MTD<div className="kpi-icon"><Icon name="gift" size={14} /></div></div>
-                    <div className="kpi-value">{totalDonationAmt.toFixed(0)}<span className="unit">MYR</span></div>
+                    <div className="kpi-value">{platformDonationTotal.toFixed(0)}<span className="unit">{PLATFORM_CURRENCY}</span></div>
                     <div className="kpi-sub"><span className="kpi-delta">{panels.donations.length} contributions</span>Total verified</div>
                   </div>
                 </div>
@@ -341,14 +368,14 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                 <div className="admin-panel-head">
                   <div><h2>All inquiries</h2><div className="sub">{pendingCount} pending · avg reply 47s</div></div>
                   <div className="admin-tabs">
-                    {[{ id: "all", label: "All", count: cols.reduce((s, c) => s + c.cards.length, 0) }, { id: "pending", label: "Pending", count: cols[0].cards.length }, { id: "responded", label: "Responded", count: cols[1].cards.length }, { id: "closed", label: "Closed", count: cols[2].cards.length }].map((t) => (
+                    {[{ id: "all", label: "All", count: fCols.reduce((s, c) => s + c.cards.length, 0) }, { id: "pending", label: "Pending", count: fCols[0].cards.length }, { id: "responded", label: "Responded", count: fCols[1].cards.length }, { id: "closed", label: "Closed", count: fCols[2].cards.length }].map((t) => (
                       <button key={t.id} className={`admin-tab ${inquiryFilter === t.id ? "active" : ""}`} onClick={() => setInquiryFilter(t.id)}>{t.label}<span className="tag">{t.count}</span></button>
                     ))}
                   </div>
                 </div>
                 <div className="admin-panel-body" style={{ paddingTop: 12 }}>
                   <div className="admin-kanban">
-                    {cols.filter((c) => inquiryFilter === "all" || inquiryFilter === c.id).map((col) => (
+                    {fCols.filter((c) => inquiryFilter === "all" || inquiryFilter === c.id).map((col) => (
                       <div className="admin-col" key={col.id} style={inquiryFilter !== "all" ? { gridColumn: "1 / -1" } : {}}>
                         <div className="admin-col-head"><span className={`admin-col-dot ${col.tone}`} /><h3>{col.title}</h3><span className={`pill ${col.tone}`}>{col.cards.length}</span></div>
                         {col.cards.length === 0 && <div style={{ background: "var(--white)", borderRadius: 12, padding: 30, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>Nothing here</div>}
@@ -364,9 +391,9 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
               <div className="admin-panel">
                 <div className="admin-panel-head"><div><h2>Live chat sessions</h2><div className="sub">{panels.activeChats.length} open session(s)</div></div></div>
                 <div className="admin-panel-body" style={{ paddingTop: 12 }}>
-                  {panels.activeChats.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="chat" size={20} /></div><strong>No active chats</strong><p>When a pet owner starts a chat, it&apos;ll appear here.</p></div>}
-                  {panels.activeChats.map((c) => (
-                    <div className="donation-row" key={c.id} style={{ cursor: "pointer", gridTemplateColumns: "auto 1fr auto auto" }} onClick={() => setOpenChatId(c.id)}>
+                  {fChats.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="chat" size={20} /></div><strong>{q ? "No matching chats" : "No active chats"}</strong><p>{q ? "Try a different search term." : "When a pet owner starts a chat, it'll appear here."}</p></div>}
+                  {fChats.map((c) => (
+                    <div className="donation-row" key={c.id} style={{ cursor: "pointer", gridTemplateColumns: "auto 1fr auto auto" }} {...clickable(() => setOpenChatId(c.id))}>
                       <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent-deep)", display: "grid", placeItems: "center" }}><Icon name="chat" size={16} /></div>
                       <div className="donation-info"><strong>{c.subject || "Chat session"}</strong> · {c.messages.length} messages<div className="donation-meta">Started {relTime(c.startedAt)}</div></div>
                       <span className={`status-pill ${c.status === "active" ? "published" : "draft"}`}>{c.status}</span>
@@ -385,7 +412,8 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                     <table className="admin-table">
                       <thead><tr><th>Title</th><th>Pet type</th><th>Status</th><th></th></tr></thead>
                       <tbody>
-                        {panels.resources.map((r) => (
+                        {fResources.length === 0 && <tr><td colSpan={4} style={{ textAlign: "center", padding: 24, color: "var(--ink-3)", fontSize: 12.5 }}>{q ? "No resources match your search." : "No resources yet."}</td></tr>}
+                        {fResources.map((r) => (
                           <tr key={r.id}>
                             <td><div className="res-cell"><div className={`res-thumb ${r.contentType}`}><Icon name={r.contentType === "video" ? "book" : r.contentType === "images" ? "paw" : "book"} size={16} /></div><div><div className="res-title">{r.title}</div><div className="res-meta">{r.contentType.toUpperCase()} · #{r.id.slice(-5).toUpperCase()}</div></div></div></td>
                             <td><div className="pet-types">{r.petTypeName ? <span className="chip">{r.petTypeName}</span> : <span className="chip">All</span>}</div></td>
@@ -405,7 +433,8 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                 <div className="admin-panel-head"><div><h2>First-aid guidance library</h2><div className="sub">{panels.guidance.length} guidance protocols authored</div></div></div>
                 <div className="admin-panel-body">
                   <div className="guidance-grid">
-                    {panels.guidance.map((g) => (
+                    {fGuidance.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="first_aid" size={18} /></div><strong>{q ? "No matching guidance" : "No guidance yet"}</strong><p>{q ? "Try a different search term." : "Authored protocols will appear here."}</p></div>}
+                    {fGuidance.map((g) => (
                       <div className="guidance-card" key={g.id}>
                         <div className="guidance-card-head"><div className="guidance-card-icon"><Icon name={SCENARIO_ICONS[g.emergencyType] || "first_aid"} size={18} /></div><div><div className="guidance-card-title">{g.title}</div><div className="guidance-card-meta">{g.emergencyType}</div></div></div>
                         <div className="guidance-card-steps"><strong>{g.steps.length} steps</strong></div>
@@ -421,9 +450,9 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
               <div className="admin-panel">
                 <div className="admin-panel-head"><div><h2>Flagged feedback</h2><div className="sub">Pet owners can flag content that needs attention</div></div></div>
                 <div className="admin-panel-body">
-                  {panels.flaggedFeedback.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="star" size={18} /></div><strong>Nothing flagged</strong><p>You&apos;re all caught up.</p></div>}
+                  {fFeedback.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="star" size={18} /></div><strong>{q ? "No matching feedback" : "Nothing flagged"}</strong><p>{q ? "Try a different search term." : "You're all caught up."}</p></div>}
                   <div className="feedback-grid">
-                    {panels.flaggedFeedback.map((f) => (
+                    {fFeedback.map((f) => (
                       <div className="feedback-card flagged" key={f.id}>
                         <div className="feedback-head"><span className="feedback-stars">{"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}</span><span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)" }}>Flagged</span></div>
                         <div className={`feedback-comment ${!f.comment ? "empty" : ""}`}>{f.comment || "No written comment"}</div>
@@ -437,10 +466,10 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
             {active === "donations" && (
               <div className="admin-panel">
-                <div className="admin-panel-head"><div><h2>Donations</h2><div className="sub">{panels.donations.length} verified · RM {totalDonationAmt.toFixed(2)} total</div></div></div>
+                <div className="admin-panel-head"><div><h2>Donations</h2><div className="sub">{panels.donations.length} verified · {totalDonationStr} total</div></div></div>
                 <div className="admin-panel-body">
-                  {panels.donations.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="gift" size={18} /></div><strong>No donations yet</strong><p>Contributions will appear here for verification.</p></div>}
-                  {panels.donations.map((d) => (
+                  {fDonations.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="gift" size={18} /></div><strong>{q ? "No matching donations" : "No donations yet"}</strong><p>{q ? "Try a different search term." : "Contributions will appear here for verification."}</p></div>}
+                  {fDonations.map((d) => (
                     <div className="donation-row" key={d.id}>
                       <div className="donation-amount"><span className="ccy">{d.currency}</span>{d.amount.toFixed(2)}</div>
                       <div className="donation-info"><strong>Contribution</strong><div className="donation-meta">Ref: {d.reference ? maskReference(d.reference) : "—"}{d.at ? ` · ${relTime(d.at)}` : ""}</div></div>
