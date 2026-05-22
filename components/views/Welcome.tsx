@@ -34,33 +34,42 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
     return {};
   };
 
+  // Auth.js signIn(redirect:false) returns { ok, error?, code? }. Our
+  // CredentialsSignin subclasses surface 'mfa_required' / 'account_locked'.
+  function reasonOf(res: { error?: string | null; code?: string | null } | undefined): string {
+    return `${res?.code ?? ""} ${res?.error ?? ""}`;
+  }
+
   async function submitLogin(mfa?: string) {
     setBanner(null);
     setLoginErrors({});
-    try {
-      await petaid.login(loginEmail, loginPassword, mfa);
+    const res = await petaid.login(loginEmail, loginPassword, mfa);
+    // NB: Auth.js v5 returns ok:true even on credentials failure — the real
+    // signal is the absence of `error`.
+    if (res && !res.error) {
       push(`Welcome back, ${loginEmail.split("@")[0]}.`, "success");
       onAuthed();
-    } catch (e) {
-      if (e instanceof ApiError && e.code === "mfa_required") {
-        setMode("mfa");
-        setBanner({ kind: "info", text: "Multi-factor authentication required. Enter the 6-digit code from your authenticator app." });
-      } else if (e instanceof ApiError && e.code === "invalid_input") {
-        setLoginErrors(fieldErr(e));
-      } else {
-        setBanner({ kind: "error", text: e instanceof Error ? e.message : "Sign in failed." });
-      }
+      return;
+    }
+    const reason = reasonOf(res);
+    if (reason.includes("mfa_required")) {
+      setMode("mfa");
+      setBanner({ kind: "info", text: "Multi-factor authentication required. Enter the 6-digit code from your authenticator app." });
+    } else if (reason.includes("account_locked")) {
+      setBanner({ kind: "error", text: "Too many failed attempts. Please wait ~30 seconds and try again." });
+    } else {
+      setBanner({ kind: "error", text: "The email or password you entered is incorrect." });
     }
   }
 
   async function submitMfa() {
     setBanner(null);
-    try {
-      await petaid.login(loginEmail, loginPassword, mfaToken);
+    const res = await petaid.login(loginEmail, loginPassword, mfaToken);
+    if (res && !res.error) {
       push("Welcome back.", "success");
       onAuthed();
-    } catch (e) {
-      setBanner({ kind: "error", text: e instanceof Error ? e.message : "Invalid code." });
+    } else {
+      setBanner({ kind: "error", text: "Invalid MFA code." });
     }
   }
 
@@ -88,12 +97,21 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
   async function submitVerification() {
     setVerifyErrors({});
     try {
-      await petaid.verifyEmail(pendingEmail, verificationCode);
-      push("Email verified — welcome to PetAid.", "success");
-      onAuthed();
+      await petaid.confirmEmail(pendingEmail, verificationCode);
     } catch (e) {
       if (e instanceof ApiError && e.code === "invalid_input") setVerifyErrors(fieldErr(e));
       else setBanner({ kind: "error", text: e instanceof Error ? e.message : "Verification failed." });
+      return;
+    }
+    // Email confirmed → establish the Auth.js session with the same password.
+    const res = await petaid.login(pendingEmail, reg.password);
+    if (res && !res.error) {
+      push("Email verified — welcome to PetAid.", "success");
+      onAuthed();
+    } else {
+      setMode("login");
+      setLoginEmail(pendingEmail);
+      setBanner({ kind: "info", text: "Email verified. Please sign in." });
     }
   }
 

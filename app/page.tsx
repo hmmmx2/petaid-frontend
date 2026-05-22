@@ -3,6 +3,7 @@
 /* Root — 1:1 port of views/99-app.jsx state machine.
    Picks Welcome / Guest / PetOwner / VetExpert from the controller snapshot. */
 import { useState } from "react";
+import { SessionProvider } from "next-auth/react";
 import { PetAidProvider, usePetAid } from "@/lib/petaid";
 import { ToastProvider } from "@/components/ui";
 import { Welcome } from "@/components/views/Welcome";
@@ -11,7 +12,7 @@ import { PetOwner } from "@/components/views/PetOwner";
 import { VetExpert } from "@/components/views/VetExpert";
 
 function AppInner() {
-  const { snapshot, loading, refresh } = usePetAid();
+  const { snapshot, loading } = usePetAid();
   const [guestMode, setGuestMode] = useState(false);
 
   if (loading || !snapshot) {
@@ -23,7 +24,7 @@ function AppInner() {
   }
 
   if (!snapshot.account) {
-    return <Welcome onAuthed={() => { setGuestMode(false); refresh(); }} onGuest={() => setGuestMode(true)} />;
+    return <Welcome onAuthed={() => setGuestMode(false)} onGuest={() => setGuestMode(true)} />;
   }
 
   return snapshot.role === "vet_expert"
@@ -33,10 +34,12 @@ function AppInner() {
 
 export default function Page() {
   return (
-    <ToastProvider>
-      <PetAidProvider>
-        <AppInner />
-      </PetAidProvider>
-    </ToastProvider>
+    <SessionProvider>
+      <ToastProvider>
+        <PetAidProvider>
+          <AppInner />
+        </PetAidProvider>
+      </ToastProvider>
+    </SessionProvider>
   );
 }

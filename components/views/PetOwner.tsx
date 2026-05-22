@@ -498,7 +498,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     setFeedbackTarget(null);
     push("Thanks for the feedback!", "success");
   };
-  const onLogout = () => { petaid.logout(); refresh(); };
+  const onLogout = () => { void petaid.logout(); };
 
   const onAction = (a: { type: string; payload?: string; section?: string }) => {
     if (a.type === "open_inquiry") { const i = panels.inquiries.find((x) => x.id === a.payload); if (i) { setActive("inquiries"); setOpenInquiry(i); } }

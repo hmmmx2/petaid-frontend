@@ -204,7 +204,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   }, [openChatId, refresh]);
 
   const openChat = openChatId ? panels.activeChats.find((c) => c.id === openChatId) || null : null;
-  const onLogout = () => { petaid.logout(); refresh(); };
+  const onLogout = () => { void petaid.logout(); };
 
   const respondInquiry = async (text: string) => {
     await petaid.respondInquiry(openInquiry.id, text);

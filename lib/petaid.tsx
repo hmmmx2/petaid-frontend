@@ -12,35 +12,25 @@
  */
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { getSession, signIn, signOut, useSession } from "next-auth/react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-const ACCESS = "petaid:access";
-const REFRESH = "petaid:refresh";
 
-/* ----------------------------------------------------------- token store */
-const tok = {
-  get access() {
-    return typeof window === "undefined" ? null : localStorage.getItem(ACCESS);
-  },
-  get refresh() {
-    return typeof window === "undefined" ? null : localStorage.getItem(REFRESH);
-  },
-  set(a: string, r: string) {
-    localStorage.setItem(ACCESS, a);
-    localStorage.setItem(REFRESH, r);
-  },
-  clear() {
-    localStorage.removeItem(ACCESS);
-    localStorage.removeItem(REFRESH);
-  },
-};
+/* ----------------------------------------------------------- access token
+ * Mirrored from the Auth.js session so client→API calls can attach a bearer.
+ * The *refresh* token is never here — it lives in the httpOnly session cookie
+ * and is rotated server-side by the jwt callback in auth.ts.
+ */
+let _accessToken: string | null = null;
+export function setAccessToken(t: string | null): void {
+  _accessToken = t;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -75,36 +65,25 @@ async function rawReq<T>(path: string, init: RequestInit, token: string | null):
   return (await res.json()) as T;
 }
 
-async function refreshTokens(): Promise<string | null> {
-  if (!tok.refresh) return null;
-  try {
-    const t = await rawReq<TokenPair>(
-      "/api/v1/auth/refresh",
-      { method: "POST", body: JSON.stringify({ refresh_token: tok.refresh }) },
-      null,
-    );
-    tok.set(t.access_token, t.refresh_token);
-    return t.access_token;
-  } catch {
-    tok.clear();
-    return null;
-  }
-}
-
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
-    return await rawReq<T>(path, init, tok.access);
+    return await rawReq<T>(path, init, _accessToken);
   } catch (e) {
+    // On 401, ask Auth.js for a fresh session — that triggers the server-side
+    // refresh-token rotation in the jwt callback — then retry once.
     if (e instanceof ApiError && e.status === 401) {
-      const t = await refreshTokens();
-      if (t) return rawReq<T>(path, init, t);
+      const s = await getSession();
+      const t = (s as { accessToken?: string } | null)?.accessToken ?? null;
+      if (t && t !== _accessToken) {
+        _accessToken = t;
+        return rawReq<T>(path, init, t);
+      }
     }
     throw e;
   }
 }
 
 /* ----------------------------------------------------------- API shapes */
-type TokenPair = { access_token: string; refresh_token: string; token_type: string; role: string };
 type ApiPetType = { id: string; name: string; description: string; icon_emoji: string; icon_bg: string };
 type ApiPet = { id: string; name: string; breed: string | null; age_years: number | null; health_notes: string; pet_type: ApiPetType };
 type ApiResource = { id: string; title: string; content_type: string; status: string; media_path: string | null; pet_type: ApiPetType };
@@ -294,7 +273,7 @@ async function loadVetSnapshot(user: ApiUser): Promise<Snapshot> {
 }
 
 export async function loadSnapshot(): Promise<Snapshot> {
-  if (!tok.access) return { account: null, role: null, dashboard: null };
+  if (!_accessToken) return { account: null, role: null, dashboard: null };
   const dash = await req<ApiDashboard>("/api/v1/dashboard");
   return normRole(dash.role) === "vet_expert"
     ? loadVetSnapshot(dash.user)
@@ -311,28 +290,30 @@ export const petaid = {
       null,
     );
   },
-  async verifyEmail(email: string, code: string) {
-    const t = await rawReq<TokenPair>(
+  /** Confirm the email code (flips the account to verified). Does NOT log
+   *  in — the caller follows with login() to establish the Auth.js session. */
+  async confirmEmail(email: string, code: string) {
+    return rawReq<{ role: string }>(
       "/api/v1/auth/verify-email",
       { method: "POST", body: JSON.stringify({ email, code }) },
       null,
     );
-    tok.set(t.access_token, t.refresh_token);
-    return t;
   },
+  /** Sign in through Auth.js (Credentials → FastAPI /auth/login). Returns the
+   *  Auth.js result; `ok` true on success, otherwise `error`/`code` carries
+   *  'mfa_required' / 'account_locked' / generic. */
   async login(email: string, password: string, mfaToken?: string) {
-    const t = await rawReq<TokenPair>(
-      "/api/v1/auth/login",
-      { method: "POST", body: JSON.stringify({ email, password, mfa_token: mfaToken || null }) },
-      null,
-    );
-    tok.set(t.access_token, t.refresh_token);
-    return t;
+    return signIn("credentials", {
+      email,
+      password,
+      mfaToken: mfaToken || "",
+      redirect: false,
+    });
   },
-  logout() {
-    tok.clear();
+  async logout() {
+    setAccessToken(null);
+    await signOut({ redirect: false });
   },
-  hasSession: () => !!tok.access,
 
   /* public (guest) content — no auth */
   async guestData(): Promise<{ guidance: Guidance[]; petTypes: PetType[] }> {
@@ -383,18 +364,22 @@ type Ctx = {
 };
 const PetAidContext = createContext<Ctx | null>(null);
 
+/**
+ * Bridges the Auth.js session to the PetAid snapshot. The access token is
+ * mirrored into the module-level ``_accessToken`` whenever the session
+ * changes; the snapshot reloads on auth-state transitions.
+ */
 export function PetAidProvider({ children }: { children: ReactNode }) {
+  const { data: session, status } = useSession();
   const [snapshot, setSnap] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const booted = useRef(false);
+  const lastToken = useRef<string | null | undefined>(undefined);
 
-  const refresh = useCallback(async () => {
+  const refresh = async () => {
     try {
-      const snap = await loadSnapshot();
-      setSnap(snap);
+      setSnap(await loadSnapshot());
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        petaid.logout();
         setSnap({ account: null, role: null, dashboard: null });
       } else {
         throw e;
@@ -402,13 +387,19 @@ export function PetAidProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    if (booted.current) return;
-    booted.current = true;
+    if (status === "loading") return;
+    const token = (session as { accessToken?: string } | null)?.accessToken ?? null;
+    // Only react when the token actually changes (sign in / out / rotate).
+    if (token === lastToken.current) return;
+    lastToken.current = token;
+    setAccessToken(token);
+    setLoading(true);
     refresh();
-  }, [refresh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, status]);
 
   return (
     <PetAidContext.Provider value={{ snapshot, loading, refresh, setSnapshot: setSnap }}>
