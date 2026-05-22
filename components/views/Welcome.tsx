@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { ApiError, petaid } from "@/lib/petaid";
-import { Field, useToast } from "@/components/ui";
+import { BusyButton, Field, useToast } from "@/components/ui";
 
 type Banner = { kind: "info" | "error"; text: string } | null;
 type Mode = "login" | "register" | "verify" | "mfa";
@@ -176,7 +176,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
               <Field label="Password" error={loginErrors.password}>
                 <input value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} type="password" placeholder="••••••••" autoComplete="current-password" onKeyDown={(e) => e.key === "Enter" && submitLogin()} />
               </Field>
-              <button className="btn-primary" onClick={() => submitLogin()}>Sign in</button>
+              <BusyButton className="btn-primary" onClick={() => submitLogin()} busyLabel="Signing in…">Sign in</BusyButton>
 
               <div className="demo-block" style={{ background: "transparent", border: "1px dashed var(--line-2)", padding: 18, marginTop: 22 }}>
                 <strong style={{ display: "block", marginBottom: 6, fontSize: 13 }}>Need first-aid help right now?</strong>
@@ -210,7 +210,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
               <Field label="Password" error={regErrors.password} hint="At least 6 characters.">
                 <input value={reg.password} onChange={(e) => setReg({ ...reg, password: e.target.value })} type="password" placeholder="••••••••" />
               </Field>
-              <button className="btn-primary" onClick={submitRegister}>Create account</button>
+              <BusyButton className="btn-primary" onClick={submitRegister} busyLabel="Creating…">Create account</BusyButton>
             </>
           )}
 
@@ -231,7 +231,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
                   style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.3em", textAlign: "center", fontSize: 18 }}
                 />
               </Field>
-              <button className="btn-primary" onClick={submitVerification}>Verify &amp; continue</button>
+              <BusyButton className="btn-primary" onClick={submitVerification} busyLabel="Verifying…">Verify &amp; continue</BusyButton>
               <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => setMode("register")}>
                 ← Back to form
               </button>
@@ -256,7 +256,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
                   onKeyDown={(e) => e.key === "Enter" && submitMfa()}
                 />
               </Field>
-              <button className="btn-primary" onClick={submitMfa}>Verify &amp; sign in</button>
+              <BusyButton className="btn-primary" onClick={submitMfa} busyLabel="Verifying…">Verify &amp; sign in</BusyButton>
               <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setMfaToken(""); }}>
                 ← Back to sign in
               </button>

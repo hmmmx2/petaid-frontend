@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
-import { Field, Icon, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -111,7 +111,7 @@ function RespondInquiryModal({ inquiry, onClose, onSubmit }: any) {
   };
   return (
     <Modal title="Respond to inquiry" subtitle={`Submitted ${relTime(inquiry.createdAt)} · status ${inquiry.status}`} onClose={onClose} wide
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Send response</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Sending…">Send response</BusyButton></>}>
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Owner&apos;s question</div>
         <div style={{ padding: 14, background: "var(--gray)", borderRadius: 10, fontSize: 13.5, lineHeight: 1.5 }}>{inquiry.question}</div>
@@ -137,7 +137,7 @@ function NewResourceModal({ petTypes, onClose, onSubmit }: any) {
   };
   return (
     <Modal title="New resource" subtitle="Create a content item grouped by Pet Type." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-secondary" onClick={() => submit(false)}>Save draft</button><button className="btn-primary" onClick={() => submit(true)}>Save &amp; publish</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-secondary" onClick={() => submit(false)} busyLabel="Saving…">Save draft</BusyButton><BusyButton className="btn-primary" onClick={() => submit(true)} busyLabel="Publishing…">Save &amp; publish</BusyButton></>}>
       <Field label="Title" error={errors.title}><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Dog CPR — Step-by-Step Video" maxLength={120} /></Field>
       <Field label="Content type">
         <select value={contentType} onChange={(e) => setContentType(e.target.value)}><option value="doc">Document</option><option value="video">Video</option><option value="image">Image set</option></select>
@@ -175,7 +175,7 @@ function VetChatModal({ chat, myId, onClose, onSend, onCloseChat }: { chat: Chat
         </div>
         <div className="chat-input">
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your response…" onKeyDown={(e) => e.key === "Enter" && send()} />
-          <button onClick={send}><Icon name="send" size={14} /></button>
+          <BusyButton className="" onClick={send}><Icon name="send" size={14} /></BusyButton>
         </div>
       </div>
     </Modal>

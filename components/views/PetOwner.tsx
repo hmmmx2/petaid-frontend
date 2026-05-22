@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
-import { Field, Icon, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -160,7 +160,7 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
   };
   return (
     <Modal title="Add a pet" subtitle="Pet Type drives which guidance and quizzes you see." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Add pet</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Adding…">Add pet</BusyButton></>}>
       <Field label="Pet name" error={errors.name}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mochi" maxLength={60} />
       </Field>
@@ -241,7 +241,7 @@ function NewInquiryModal({ onClose, onSubmit }: any) {
   };
   return (
     <Modal title="Submit an inquiry" subtitle="A veterinary expert will respond within the dashboard." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Submit</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Submitting…">Submit</BusyButton></>}>
       <Field label="Your question" error={error} hint="Up to 1000 characters.">
         <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Describe the situation, your pet's symptoms, and any timing details…" rows={6} maxLength={1000} style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical" }} />
       </Field>
@@ -295,7 +295,7 @@ function QuizModal({ quiz, onClose, onSubmit }: { quiz: Quiz; onClose: () => voi
   }
   return (
     <Modal title={quiz.title} subtitle={`${quiz.questions.length} questions · pass at ${quiz.passingScore}%`} onClose={onClose} wide
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Submit answers</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Submitting…">Submit answers</BusyButton></>}>
       {quiz.questions.map((q, i) => (
         <div key={i} style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{i + 1}. {q.prompt}</div>
@@ -344,7 +344,7 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
   }
   return (
     <Modal title="Make a donation" subtitle="100 % goes to the Veterinary Association." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Donate</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Processing…">Donate</BusyButton></>}>
       <Field label="Amount (MYR)">
         <div className="amount-grid">
           {presets.map((p) => <button key={p} type="button" className={!custom && amount === p ? "selected" : ""} onClick={() => { setAmount(p); setCustom(""); }}>{money(p)}</button>)}
@@ -388,7 +388,7 @@ function ChatModal({ chat, myId, onClose, onSend, onCloseChat }: { chat: Chat; m
         </div>
         <div className="chat-input">
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a message…" onKeyDown={(e) => e.key === "Enter" && send()} />
-          <button onClick={send}><Icon name="send" size={14} /></button>
+          <BusyButton className="" onClick={send}><Icon name="send" size={14} /></BusyButton>
         </div>
       </div>
     </Modal>
@@ -407,7 +407,7 @@ function FeedbackModal({ target, onClose, onSubmit }: any) {
   };
   return (
     <Modal title={`Rate “${target.title}”`} subtitle="Your feedback helps vets improve the content." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={submit}>Submit feedback</button></>}>
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Submitting…">Submit feedback</BusyButton></>}>
       <Field label="Rating"><StarRow value={rating} onChange={setRating} /></Field>
       <Field label="Comment (optional)" hint="Up to 500 characters.">
         <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={4} maxLength={500} placeholder="What was useful, what could be clearer?" style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical" }} />

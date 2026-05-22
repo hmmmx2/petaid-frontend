@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -93,6 +94,47 @@ export function clickable(onActivate: () => void, label?: string) {
       }
     },
   };
+}
+
+/* ---------- BusyButton ----------
+   Prevents button/double-submit spam: disables itself while its async onClick
+   is in flight, so a user (or an impatient double-click) can't fire the same
+   mutating request repeatedly. Pairs with server-side rate limits as the
+   client-side half of anti-spam. */
+export function BusyButton({
+  onClick,
+  children,
+  className = "btn-primary",
+  disabled = false,
+  busyLabel,
+  style,
+  type = "button",
+}: {
+  onClick: () => unknown | Promise<unknown>;
+  children: ReactNode;
+  className?: string;
+  disabled?: boolean;
+  busyLabel?: ReactNode;
+  style?: React.CSSProperties;
+  type?: "button" | "submit";
+}) {
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  const handle = async () => {
+    if (busy || disabled) return;
+    setBusy(true);
+    try {
+      await onClick();
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+  return (
+    <button type={type} className={className} style={style} disabled={busy || disabled} onClick={handle}>
+      {busy ? busyLabel ?? children : children}
+    </button>
+  );
 }
 
 /* ---------- Modal ---------- */
