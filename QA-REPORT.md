@@ -8,6 +8,19 @@
 
 ---
 
+## 0. Resolution update (post-fix)
+
+> **All 14 defects (DEF-01 → DEF-14) are now fixed and verified.** The open
+> items below (DEF-09 → DEF-14) were resolved in a follow-up engineering pass:
+> responsive drawer + grid stacking, keyboard-accessible cards, single-currency
+> (MYR) with per-currency vet KPI, quiz best-score badges, a real rate-limited
+> resend-code endpoint, and a functional vet search + quieter auth logs.
+> Verified via live API tests, `tsc --noEmit` (clean), and browser checks
+> (drawer open/close, no mobile overflow, badges render, search filters).
+> Commits: backend `0876b46`, frontend `2a2848d`.
+
+---
+
 ## 1. Executive summary
 
 | Metric | Result |
@@ -97,7 +110,7 @@ Severity key: **S1 Critical** (blocks core journey) · **S2 High** · **S3 Mediu
 
 ---
 
-### ⚠️ OPEN — recommended for the senior full-stack developer
+### ✅ RESOLVED in the follow-up engineering pass (originally OPEN)
 
 #### DEF-09 — [S3 Medium] No responsive / mobile layout
 - **Repro:** Resize to 375 px (mobile). The 248 px sidebar stays fixed and doesn't collapse; main content is crushed to ~127 px and the page overflows horizontally (scrollWidth 593 vs viewport 375).
