@@ -1843,16 +1843,43 @@ html.reduce-motion *::after {
     gap: 10px;
   }
   .topbar h1,
-  .admin-topbar h1 { font-size: 15px; }
+  .admin-topbar h1 {
+    font-size: 15px;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Keep the topbar to one tidy row: drop the "· Section" subtitle, the
+     on-duty pill, and the redundant topbar CTA (it's duplicated in the section
+     header) so nothing overflows on a phone. */
+  .topbar h1 span { display: none; }
+  .admin-topbar .live-pill { display: none; }
+  /* `!important` overrides the button's inline display:inline-flex. */
+  .admin-topbar .btn-ink { display: none !important; }
+  .admin-topbar .crumbs { min-width: 0; overflow: hidden; }
+  .admin-topbar .crumbs strong { overflow: hidden; text-overflow: ellipsis; }
 
   /* Auth/login: drop the decorative art panel, single-column form. */
   .auth-stage { grid-template-columns: 1fr; }
   .auth-art { display: none; }
   .auth-pane { padding: 36px 22px; }
 
-  /* Collapse dense, fixed-count grids (both class- and inline-styled). */
-  .hero { grid-template-columns: 1fr; }
+  /* Pet Owner hero: bar chart + gauge span full width, the three stats sit in
+     a compact 3-up row instead of a tall, sparse single column. */
+  .hero {
+    grid-template-columns: repeat(3, 1fr);
+    row-gap: 18px;
+    column-gap: 10px;
+    align-items: start;
+  }
+  .hero > div:first-child { grid-column: 1 / -1; }
+  .hero .gauge { grid-column: 1 / -1; }
   .hero-div { display: none; }
+  .hero-stat { text-align: center; }
+  .hero-stat .meta { justify-content: center; }
+
+  /* Collapse dense, fixed-count grids (both class- and inline-styled). */
   .board { grid-template-columns: repeat(2, 1fr); }
   .amount-grid { grid-template-columns: repeat(2, 1fr); }
   .admin-kpi-row { grid-template-columns: 1fr 1fr; }
