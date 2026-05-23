@@ -67,24 +67,66 @@ function KpiSparkline({ color = "currentColor", values = [3, 4, 3, 5, 6, 5, 7, 8
   return <svg className="kpi-spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="none"><polyline points={pts} stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function SlaChart() {
-  const w = 360, h = 100, pad = { l: 30, r: 8, t: 10, b: 22 };
-  const data = [88, 92, 90, 94, 91, 95, 92], days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+type SlaRange = "7D" | "30D" | "90D";
+type ChartType = "line" | "bar";
+
+// Demo SLA series per range (% answered within 24h).
+const SLA_SERIES: Record<SlaRange, { labels: string[]; values: number[] }> = {
+  "7D": { labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], values: [88, 92, 90, 94, 91, 95, 92] },
+  "30D": { labels: ["W1", "W2", "W3", "W4"], values: [89, 91, 90, 93] },
+  "90D": { labels: ["Month 1", "Month 2", "Month 3"], values: [87, 91, 93] },
+};
+const SLA_RANGE_LABEL: Record<SlaRange, string> = {
+  "7D": "last 7 days",
+  "30D": "last 30 days",
+  "90D": "last 90 days",
+};
+
+function SlaChart({ range = "30D", type = "line" }: { range?: SlaRange; type?: ChartType }) {
+  const { labels, values } = SLA_SERIES[range] ?? SLA_SERIES["30D"];
+  const w = 640, h = 280, pad = { l: 40, r: 18, t: 20, b: 34 };
   const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
-  const xAt = (i: number) => pad.l + (i / (data.length - 1)) * cw;
-  const yAt = (v: number) => pad.t + (1 - (v - 80) / 20) * ch;
-  const path = data.map((v, i) => `${i === 0 ? "M" : "L"}${xAt(i)},${yAt(v)}`).join(" ");
-  const area = path + ` L${xAt(data.length - 1)},${h - pad.b} L${xAt(0)},${h - pad.b} Z`;
+  const minY = 80, maxY = 100;
+  const n = labels.length;
+  const yAt = (v: number) => pad.t + (1 - (v - minY) / (maxY - minY)) * ch;
+  // Line points spread edge-to-edge; bars sit centered in equal slots.
+  const xLine = (i: number) => (n === 1 ? pad.l + cw / 2 : pad.l + (i / (n - 1)) * cw);
+  const xSlot = (i: number) => pad.l + ((i + 0.5) / n) * cw;
+  const xAt = type === "bar" ? xSlot : xLine;
+
+  const linePath = values.map((v, i) => `${i === 0 ? "M" : "L"}${xLine(i)},${yAt(v)}`).join(" ");
+  const areaPath = `${linePath} L${xLine(n - 1)},${h - pad.b} L${xLine(0)},${h - pad.b} Z`;
+  const barW = Math.min((cw / n) * 0.5, 46);
+
   return (
     <div className="admin-chart">
-      <svg viewBox={`0 0 ${w} ${h}`}>
-        <defs><linearGradient id="slaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#FA7956" stopOpacity="0.25" /><stop offset="100%" stopColor="#FA7956" stopOpacity="0" /></linearGradient></defs>
-        {[0, 1, 2].map((i) => <line key={i} x1={pad.l} x2={w - pad.r} y1={pad.t + (ch / 2) * i} y2={pad.t + (ch / 2) * i} stroke="#ECECEC" strokeDasharray={i === 2 ? "0" : "2 4"} />)}
-        {[100, 90, 80].map((v, i) => <text key={v} x={pad.l - 6} y={pad.t + (ch / 2) * i + 3} fontSize="9" fill="#8a8a8a" textAnchor="end" fontFamily="JetBrains Mono">{v}</text>)}
-        <path d={area} fill="url(#slaGrad)" />
-        <path d={path} stroke="#FA7956" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        {data.map((v, i) => <circle key={i} cx={xAt(i)} cy={yAt(v)} r={2.5} fill="#fff" stroke="#FA7956" strokeWidth="1.5" />)}
-        {days.map((d, i) => <text key={d} x={xAt(i)} y={h - 6} fontSize="9" fill="#8a8a8a" textAnchor="middle" fontFamily="JetBrains Mono" letterSpacing="0.05em">{d.toUpperCase()}</text>)}
+      <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={`Response SLA, ${range}`}>
+        <defs>
+          <linearGradient id="slaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#FA7956" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#FA7956" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[100, 90, 80].map((v) => (
+          <g key={v}>
+            <line x1={pad.l} x2={w - pad.r} y1={yAt(v)} y2={yAt(v)} stroke="#ECECEC" strokeDasharray={v === 80 ? "0" : "2 5"} />
+            <text x={pad.l - 8} y={yAt(v) + 3} fontSize="11" fill="#8a8a8a" textAnchor="end" fontFamily="JetBrains Mono">{v}</text>
+          </g>
+        ))}
+        {type === "line" ? (
+          <>
+            <path d={areaPath} fill="url(#slaGrad)" />
+            <path d={linePath} stroke="#FA7956" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            {values.map((v, i) => <circle key={i} cx={xLine(i)} cy={yAt(v)} r={3.5} fill="#fff" stroke="#FA7956" strokeWidth="2" />)}
+          </>
+        ) : (
+          values.map((v, i) => (
+            <rect key={i} x={xSlot(i) - barW / 2} y={yAt(v)} width={barW} height={h - pad.b - yAt(v)} rx={5} fill="#FA7956" />
+          ))
+        )}
+        {labels.map((d, i) => (
+          <text key={d} x={xAt(i)} y={h - 10} fontSize="11" fill="#8a8a8a" textAnchor="middle" fontFamily="JetBrains Mono" letterSpacing="0.04em">{d.toUpperCase()}</text>
+        ))}
       </svg>
     </div>
   );
@@ -191,6 +233,8 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const [active, setActive] = useState("overview");
   const [navOpen, setNavOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [slaRange, setSlaRange] = useState<SlaRange>("30D");
+  const [slaType, setSlaType] = useState<ChartType>("line");
   const [openInquiry, setOpenInquiry] = useState<any>(null);
   const [showNewResource, setShowNewResource] = useState(false);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
@@ -334,8 +378,24 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
                 <div className="admin-grid-2">
                   <div className="admin-panel">
-                    <div className="admin-panel-head"><div><h2>Response SLA · 7 days</h2><div className="sub">% of inquiries answered within 24 hours</div></div><div className="admin-tabs"><button className="admin-tab">7D</button><button className="admin-tab active">30D</button><button className="admin-tab">90D</button></div></div>
-                    <div className="admin-panel-body"><SlaChart /></div>
+                    <div className="admin-panel-head">
+                      <div><h2>Response SLA · {SLA_RANGE_LABEL[slaRange]}</h2><div className="sub">% of inquiries answered within 24 hours</div></div>
+                      <div className="admin-panel-controls">
+                        <div className="admin-tabs" role="group" aria-label="Chart type">
+                          {(["line", "bar"] as ChartType[]).map((t) => (
+                            <button key={t} className={`admin-tab ${slaType === t ? "active" : ""}`} aria-pressed={slaType === t} onClick={() => setSlaType(t)}>
+                              <Icon name={t === "line" ? "trend" : "bars"} size={13} /> {t === "line" ? "Line" : "Bar"}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="admin-tabs" role="group" aria-label="Time range">
+                          {(["7D", "30D", "90D"] as SlaRange[]).map((r) => (
+                            <button key={r} className={`admin-tab ${slaRange === r ? "active" : ""}`} aria-pressed={slaRange === r} onClick={() => setSlaRange(r)}>{r}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="admin-panel-body"><SlaChart range={slaRange} type={slaType} /></div>
                   </div>
                   <div className="admin-panel">
                     <div className="admin-panel-head"><div><h2>Activity</h2><div className="sub">{activity.length} events</div></div></div>

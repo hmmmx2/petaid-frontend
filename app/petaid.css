@@ -1279,11 +1279,11 @@ html.reduce-motion *::after {
 }
 .admin-grid-2 > .admin-panel:first-child .admin-panel-body {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: center; /* center the (full-width) chart vertically */
 }
 .admin-activity {
-  max-height: 340px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -1761,9 +1761,24 @@ html.reduce-motion *::after {
 
 /* === MINI CHART (line + area for SLA) === */
 .admin-chart {
+  width: 100%;
   padding: 4px 6px;
 }
-.admin-chart svg { width: 100%; display: block; }
+.admin-chart svg { width: 100%; height: auto; display: block; }
+
+/* SLA panel control cluster: chart-type toggle + time-range tabs. */
+.admin-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.admin-panel-controls .admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 
 /* === EMPTY STATES === */
 .admin-empty {
