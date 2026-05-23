@@ -134,26 +134,43 @@ function PetAvatar({ pet, className = "pet-avatar-lg" }: { pet: any; className?:
   return <div className={className}>{pet.emoji}</div>;
 }
 
-/** Reusable photo picker — downscales the chosen file to a JPEG data URL. */
-function PetPhotoPicker({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+/** Prepared pet icons the owner can pick from. */
+const PET_ICONS = ["🐕", "🐈", "🐇", "🐹", "🐦", "🐠", "🐢", "🐴", "🐷", "🐤", "🦜", "🐾"];
+
+/** Avatar picker — choose a prepared icon OR upload a photo (which wins). */
+function PetAvatarPicker({ icon, image, onChange }: { icon: string | null; image: string | null; onChange: (v: { icon?: string | null; image?: string | null }) => void }) {
   const [reading, setReading] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const pick = async (files: FileList | null) => {
     if (!files || !files[0]) return;
     setReading(true);
-    try { onChange(await fileToDownscaledDataUrl(files[0], 640, 0.8)); }
+    try { onChange({ image: await fileToDownscaledDataUrl(files[0], 640, 0.8) }); }
     catch { /* ignore unreadable files */ }
     finally { setReading(false); if (ref.current) ref.current.value = ""; }
   };
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pick(e.target.files)} />
-      <div style={{ width: 64, height: 64, borderRadius: 12, overflow: "hidden", background: "var(--cream)", display: "grid", placeItems: "center", border: "1px solid var(--line)", flexShrink: 0 }}>
-        {value ? <img src={value} alt="Pet" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="paw" size={22} />}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 12, overflow: "hidden", background: "var(--cream)", display: "grid", placeItems: "center", border: "1px solid var(--line)", fontSize: 30, flexShrink: 0 }}>
+          {image ? <img src={image} alt="Pet" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (icon || "🐾")}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pick(e.target.files)} />
+          <button type="button" className="btn-secondary" onClick={() => ref.current?.click()} disabled={reading}>{reading ? "Reading…" : image ? "Change photo" : "Upload photo"}</button>
+          {image && <button type="button" className="btn-ghost" onClick={() => onChange({ image: null })}>Use an icon</button>}
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="btn-secondary" onClick={() => ref.current?.click()} disabled={reading}>{reading ? "Reading…" : value ? "Change photo" : "Upload photo"}</button>
-        {value && <button type="button" className="btn-ghost" onClick={() => onChange(null)}>Remove</button>}
+      <div style={{ fontSize: 11, color: "var(--ink-3)", marginBottom: 6, letterSpacing: "0.04em", textTransform: "uppercase" }}>Or pick an icon</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {PET_ICONS.map((e) => {
+          const selected = !image && icon === e;
+          return (
+            <button key={e} type="button" onClick={() => onChange({ icon: e, image: null })} aria-label={`Use ${e} icon`} aria-pressed={selected}
+              style={{ width: 42, height: 42, borderRadius: 10, fontSize: 22, lineHeight: 1, display: "grid", placeItems: "center", cursor: "pointer", border: `1.5px solid ${selected ? "var(--accent)" : "var(--line-2)"}`, background: selected ? "var(--accent-soft)" : "var(--white)" }}>
+              {e}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -186,11 +203,12 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
   const [breed, setBreed] = useState("");
   const [age, setAge] = useState("1");
   const [image, setImage] = useState<string | null>(null);
+  const [icon, setIcon] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const submit = async () => {
     setErrors({});
     try {
-      await onSubmit({ name, typeId, breed, age: Number(age), image_url: image });
+      await onSubmit({ name, typeId, breed, age: Number(age), image_url: image, icon_emoji: icon });
     } catch (e) {
       if (e instanceof ApiError && e.field) setErrors({ [e.field]: e.message });
       else setErrors({ form: e instanceof Error ? e.message : "Failed" });
@@ -199,8 +217,8 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
   return (
     <Modal title="Add a pet" subtitle="Pet Type drives which guidance and quizzes you see." onClose={onClose}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Adding…">Add pet</BusyButton></>}>
-      <Field label="Photo (optional)">
-        <PetPhotoPicker value={image} onChange={setImage} />
+      <Field label="Profile picture">
+        <PetAvatarPicker icon={icon} image={image} onChange={(v) => { if ("image" in v) setImage(v.image ?? null); if ("icon" in v) setIcon(v.icon ?? null); }} />
       </Field>
       <Field label="Pet name" error={errors.name}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mochi" maxLength={60} />
@@ -229,12 +247,13 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
   const [age, setAge] = useState(String(pet.age ?? 0));
   const [notes, setNotes] = useState(pet.notes || "");
   const [image, setImage] = useState<string | null>(pet.image || null);
+  const [icon, setIcon] = useState<string | null>(pet.icon || null);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setError(null);
     if (!name.trim()) { setError("Name is required."); return; }
     try {
-      await onSave({ name: name.trim(), pet_type_id: typeId, breed: breed.trim(), age_years: Number(age) || 0, health_notes: notes, image_url: image });
+      await onSave({ name: name.trim(), pet_type_id: typeId, breed: breed.trim(), age_years: Number(age) || 0, health_notes: notes, image_url: image, icon_emoji: icon });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Couldn't save.");
     }
@@ -288,7 +307,7 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
         </div>
       ) : (
         <>
-          <Field label="Photo"><PetPhotoPicker value={image} onChange={setImage} /></Field>
+          <Field label="Profile picture"><PetAvatarPicker icon={icon} image={image} onChange={(v) => { if ("image" in v) setImage(v.image ?? null); if ("icon" in v) setIcon(v.icon ?? null); }} /></Field>
           <Field label="Pet name"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></Field>
           <Field label="Pet type">
             <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -656,7 +675,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
   /* handlers */
   const handleAddPet = async (d: any) => {
-    await petaid.addPet({ name: d.name, pet_type_id: d.typeId, breed: d.breed, age_years: d.age, health_notes: "", image_url: d.image_url });
+    await petaid.addPet({ name: d.name, pet_type_id: d.typeId, breed: d.breed, age_years: d.age, health_notes: "", image_url: d.image_url, icon_emoji: d.icon_emoji });
     await refresh();
     setShowAddPet(false);
     push("Pet added.", "success");
