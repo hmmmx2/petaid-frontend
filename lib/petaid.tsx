@@ -439,6 +439,11 @@ export const petaid = {
       { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) },
     );
   },
+  /** Vet MFA enrolment: fetch the otpauth:// provisioning URI for the QR code. */
+  mfaProvisioning: () => req<{ otpauth_uri: string | null }>("/api/v1/auth/mfa/provisioning"),
+  /** Confirm a vet's authenticator code matches their enrolled secret. */
+  verifyMfa: (code: string) =>
+    req<{ verified: boolean }>("/api/v1/auth/mfa/verify", { method: "POST", body: JSON.stringify({ code }) }),
 
   /* public (guest) content — no auth */
   async guestData(): Promise<{ guidance: Guidance[]; petTypes: PetType[] }> {

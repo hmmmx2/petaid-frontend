@@ -8,7 +8,7 @@ import { ApiError, petaid } from "@/lib/petaid";
 import { BusyButton, Field, Icon, PasswordInput, PasswordRequirements, useToast } from "@/components/ui";
 import { isEmail, passwordOk } from "@/lib/validation";
 
-type Banner = { kind: "info" | "error"; text: string } | null;
+type Banner = { kind: "info" | "error" | "success"; text: string } | null;
 type Mode = "login" | "register" | "verify" | "mfa" | "forgot" | "reset";
 
 const RESEND_COOLDOWN = 30; // seconds; mirrors the backend resend cooldown
@@ -21,6 +21,14 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
+  const [remember, setRemember] = useState(true);
+
+  // Remember-me: prefill the email saved on this device from a prior sign-in.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("petaid:rememberEmail");
+    if (saved) { setLoginEmail(saved); setRemember(true); }
+  }, []);
 
   const [mfaToken, setMfaToken] = useState("");
 
@@ -70,6 +78,10 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
 
     const r = await petaid.login(loginEmail, loginPassword, mfa);
     if (r.ok) {
+      try {
+        if (remember) window.localStorage.setItem("petaid:rememberEmail", loginEmail.trim());
+        else window.localStorage.removeItem("petaid:rememberEmail");
+      } catch { /* storage unavailable */ }
       push(`Welcome back, ${loginEmail.split("@")[0]}.`, "success");
       onAuthed();
       return;
@@ -202,7 +214,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       setMode("login");
       setLoginEmail(resetEmail);
       setLoginPassword("");
-      setBanner({ kind: "info", text: "Your password has been reset. Please sign in with your new password." });
+      setBanner({ kind: "success", text: "✓ Your password has been reset. Please sign in with your new password." });
     } catch (e) {
       if (e instanceof ApiError && e.field) setResetErrors(fieldErr(e));
       else setBanner({ kind: "error", text: errText(e, "Could not reset your password.") });
@@ -264,7 +276,11 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
               <Field label="Password" error={loginErrors.password}>
                 <PasswordInput value={loginPassword} onChange={setLoginPassword} autoComplete="current-password" onKeyDown={(e) => e.key === "Enter" && submitLogin()} />
               </Field>
-              <div className="auth-row-end">
+              <div className="auth-row-between">
+                <label className="auth-check sm">
+                  <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                  <span>Remember me</span>
+                </label>
                 <button type="button" className="btn-link" onClick={() => { setForgotEmail(loginEmail); setForgotErrors({}); setBanner(null); setMode("forgot"); }}>
                   Forgot password?
                 </button>

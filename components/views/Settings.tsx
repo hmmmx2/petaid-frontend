@@ -5,9 +5,68 @@
    (the backend exposes no profile-setter in A3 scope). */
 import Image from "next/image";
 import { useState } from "react";
+import QRCode from "qrcode";
 import { BusyButton, Field, Icon, PasswordInput, PasswordRequirements, maskEmail, useToast } from "@/components/ui";
 import { ApiError, petaid, type Account } from "@/lib/petaid";
 import { passwordOk } from "@/lib/validation";
+
+/* Vet authenticator (TOTP) enrolment — fetches the otpauth URI from the backend,
+   renders the QR code locally (the secret never leaves the app) and lets the
+   user confirm their code works. */
+function MfaEnrollment() {
+  const { push } = useToast();
+  const [open, setOpen] = useState(false);
+  const [qr, setQr] = useState<string | null>(null);
+  const [secret, setSecret] = useState("");
+  const [code, setCode] = useState("");
+  const [result, setResult] = useState<"" | "ok" | "bad">("");
+
+  const start = async () => {
+    setResult("");
+    try {
+      const { otpauth_uri } = await petaid.mfaProvisioning();
+      if (!otpauth_uri) { push("MFA isn't enabled for this account.", "danger"); return; }
+      setSecret(new URL(otpauth_uri).searchParams.get("secret") || "");
+      setQr(await QRCode.toDataURL(otpauth_uri, { width: 184, margin: 1 }));
+      setOpen(true);
+    } catch {
+      push("Couldn't load your authenticator setup.", "danger");
+    }
+  };
+
+  const verify = async () => {
+    try {
+      const { verified } = await petaid.verifyMfa(code);
+      setResult(verified ? "ok" : "bad");
+      if (verified) push("Authenticator verified.", "success");
+    } catch {
+      setResult("bad");
+    }
+  };
+
+  if (!open) {
+    return <BusyButton className="btn-secondary" onClick={start} busyLabel="Loading…" style={{ width: "auto", marginTop: 12 }}>Set up authenticator</BusyButton>;
+  }
+  return (
+    <div className="mfa-enroll">
+      <p className="mfa-help">Scan this with Google Authenticator, Authy or 1Password — or enter the key manually. Then confirm a code to make sure it works.</p>
+      <div className="mfa-grid">
+        {qr && <img src={qr} alt="Authenticator QR code" className="mfa-qr" />}
+        <div>
+          <div className="mfa-secret-label">Setup key</div>
+          <code className="mfa-secret">{secret}</code>
+          <button type="button" className="btn-link" style={{ display: "block", marginTop: 6 }} onClick={() => { navigator.clipboard?.writeText(secret); push("Key copied.", "success"); }}>Copy key</button>
+        </div>
+      </div>
+      <div className="mfa-verify">
+        <input value={code} onChange={(e) => { setCode(e.target.value.replace(/\D/g, "").slice(0, 6)); setResult(""); }} placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.2em", textAlign: "center", maxWidth: 140 }} />
+        <BusyButton className="btn-primary" onClick={verify} busyLabel="Checking…" style={{ width: "auto" }} disabled={code.length < 6}>Verify</BusyButton>
+        {result === "ok" && <span className="mfa-ok">✓ Works!</span>}
+        {result === "bad" && <span className="mfa-bad">✗ Didn&apos;t match — use the current code.</span>}
+      </div>
+    </div>
+  );
+}
 
 const SECTIONS = [
   { id: "profile", group: "Account", icon: "paw", label: "Edit profile" },
@@ -78,8 +137,10 @@ function SectionSecurity({ account }: { account: Account }) {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
   const isVet = account.role === "vet_expert";
   const submit = async () => {
+    setSaved(false);
     const e: Record<string, string> = {};
     if (!current) e.current = "Enter your current password.";
     if (!passwordOk(next)) e.next = "Your new password doesn't meet all the requirements below.";
@@ -89,6 +150,7 @@ function SectionSecurity({ account }: { account: Account }) {
     try {
       await petaid.changePassword(current, next);
       setErrors({}); setCurrent(""); setNext(""); setConfirm("");
+      setSaved(true);
       push("Password updated.", "success");
     } catch (err) {
       if (err instanceof ApiError && err.field) {
@@ -110,18 +172,20 @@ function SectionSecurity({ account }: { account: Account }) {
           <Field label="Current password" error={errors.current}><PasswordInput value={current} onChange={setCurrent} autoComplete="current-password" /></Field>
           <Field label="New password" error={errors.next}><PasswordInput value={next} onChange={setNext} autoComplete="new-password" /></Field>
           <PasswordRequirements value={next} />
-          <Field label="Confirm new password" error={errors.confirm}><PasswordInput value={confirm} onChange={setConfirm} autoComplete="new-password" /></Field>
+          <Field label="Confirm new password" error={errors.confirm}><PasswordInput value={confirm} onChange={(v) => { setConfirm(v); setSaved(false); }} autoComplete="new-password" /></Field>
+          {saved && <div className="settings-saved" role="status">✓ Password updated.</div>}
           <BusyButton className="btn-primary" style={{ width: "auto", minWidth: 160 }} onClick={submit} busyLabel="Updating…">Update password</BusyButton>
         </div>
         <div className="settings-card">
           <div className="settings-card-head">
-            <div><strong>Two-factor authentication</strong><p>{isVet ? "Required for all vet accounts." : "Optional. Adds a code from an authenticator app on top of your password."}</p></div>
+            <div><strong>Two-factor authentication</strong><p>{isVet ? "Required for all vet accounts. Add it to an authenticator app below." : "Optional. Adds a code from an authenticator app on top of your password."}</p></div>
             <span className={`tag-pill ${isVet ? "success" : ""}`}>{isVet ? "On · required" : "Off"}</span>
           </div>
           <ul className="settings-list">
             <li><span>Authenticator app</span><span className={`tag-pill ${isVet ? "success" : ""}`}>{isVet ? "Active" : "Not set"}</span></li>
             <li><span>Backup codes</span><span className="tag-pill">Not generated</span></li>
           </ul>
+          {isVet && <MfaEnrollment />}
         </div>
       </div>
     </div>

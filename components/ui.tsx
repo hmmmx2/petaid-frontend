@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { passwordChecks, PASSWORD_RULES } from "@/lib/validation";
+import { passwordChecks, passwordStrength, PASSWORD_RULES } from "@/lib/validation";
 
 /* ---------- Icons ---------- */
 const ICONS: Record<string, ReactNode> = {
@@ -363,15 +363,26 @@ export function PasswordInput({
    lib/validation). Pass the current password value. */
 export function PasswordRequirements({ value }: { value: string }) {
   const c = passwordChecks(value);
+  const s = passwordStrength(value);
   return (
-    <ul className="pw-reqs" aria-label="Password requirements">
-      {PASSWORD_RULES.map((r) => (
-        <li key={r.key} className={c[r.key] ? "ok" : ""}>
-          <span className="pw-req-mark" aria-hidden="true">{c[r.key] ? "✓" : "○"}</span>
-          {r.label}
-        </li>
-      ))}
-    </ul>
+    <div className="pw-meta">
+      {value && (
+        <div className="pw-strength" data-score={s.score}>
+          <div className="pw-bar" aria-hidden="true">
+            <span style={{ width: `${(s.score / 4) * 100}%` }} />
+          </div>
+          <span className="pw-strength-label" role="status">{s.label}</span>
+        </div>
+      )}
+      <ul className="pw-reqs" aria-label="Password requirements">
+        {PASSWORD_RULES.map((r) => (
+          <li key={r.key} className={c[r.key] ? "ok" : ""}>
+            <span className="pw-req-mark" aria-hidden="true">{c[r.key] ? "✓" : "○"}</span>
+            {r.label}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
