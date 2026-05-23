@@ -6,18 +6,20 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
 import { BusyButton, Field, Icon, ImageGallery, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { useChatRealtime } from "@/lib/chatRealtime";
+import { ChatThread } from "./ChatThread";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
 
 const SCENARIO_ICONS: Record<string, string> = { cardiac: "heart", poisoning: "alert", bleeding: "droplet", heatstroke: "thermometer", choking: "bone" };
 
-function AdminSidebar({ active, setActive, panels, account, onLogout, open, onClose, query, setQuery }: any) {
+function AdminSidebar({ active, setActive, panels, account, onLogout, open, onClose, query, setQuery, liveChats = [], chatUnread = 0 }: any) {
   const go = (id: string) => { setActive(id); onClose?.(); };
   const items = [
     { id: "overview", label: "Overview", icon: "dashboard", count: 0 },
     { id: "inquiries", label: "Inquiries", icon: "mail", count: panels.inquiriesByStatus.pending.length, attention: panels.inquiriesByStatus.pending.length > 0 },
-    { id: "chats", label: "Live chats", icon: "chat", count: panels.activeChats.length, attention: panels.activeChats.some((c: Chat) => c.status === "initiated") },
+    { id: "chats", label: "Live chats", icon: "chat", count: liveChats.length, unread: chatUnread, attention: chatUnread > 0 || liveChats.some((c: Chat) => c.status === "initiated") },
     { id: "resources", label: "Resources", icon: "book", count: panels.resources.length },
     { id: "guidance", label: "Guidance library", icon: "first_aid", count: panels.guidance.length },
     { id: "feedback", label: "Feedback", icon: "star", count: panels.flaggedFeedback.length, attention: panels.flaggedFeedback.length > 0 },
@@ -29,7 +31,8 @@ function AdminSidebar({ active, setActive, panels, account, onLogout, open, onCl
     if (it.attention) cls.push("has-attention");
     return (
       <button key={it.id} className={cls.join(" ")} onClick={() => go(it.id)}>
-        <Icon name={it.icon} size={16} /><span>{it.label}</span>{it.count > 0 && <span className="nav-count">{it.count}</span>}
+        <Icon name={it.icon} size={16} /><span>{it.label}</span>
+        {it.unread > 0 ? <span className="nav-unread">{it.unread}</span> : it.count > 0 && <span className="nav-count">{it.count}</span>}
       </button>
     );
   };
@@ -226,32 +229,14 @@ function NewResourceModal({ petTypes, onClose, onSubmit }: any) {
   );
 }
 
-function VetChatModal({ chat, myId, onClose, onSend, onCloseChat }: { chat: Chat; myId: string; onClose: () => void; onSend: (t: string) => Promise<void>; onCloseChat: () => Promise<void> }) {
-  const [text, setText] = useState("");
-  const send = async () => { if (!text.trim()) return; const t = text; setText(""); await onSend(t); };
-  return (
-    <Modal title="Chat with pet owner" subtitle={`Status: ${chat.status}`} onClose={onClose} wide
-      footer={<button className="btn-secondary" onClick={onCloseChat}>End chat</button>}>
-      {chat.status === "initiated" && <div className="banner info">Send your first message to join the session.</div>}
-      <div className="chat-window">
-        <div className="chat-messages">
-          {chat.messages.map((m) => <div key={m.id} className={`chat-bubble ${m.senderId === myId ? "mine" : "theirs"}`}>{m.text}</div>)}
-          {chat.messages.length === 0 && <div style={{ color: "var(--ink-3)", fontSize: 12, textAlign: "center", padding: 20 }}>No messages yet.</div>}
-        </div>
-        <div className="chat-input">
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type your response…" onKeyDown={(e) => e.key === "Enter" && send()} />
-          <BusyButton className="" onClick={send}><Icon name="send" size={14} /></BusyButton>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const { refresh } = usePetAid();
   const { push } = useToast();
+  const { chats, refreshChats, presenceFor } = useChatRealtime();
   const panels = snapshot.dashboard!.panels as VetPanels;
   const account = snapshot.account!;
+  const liveChats = chats.filter((c) => c.status !== "closed");
+  const chatUnread = chats.reduce((s, c) => s + (c.unread || 0), 0);
 
   const [active, setActive] = useState("overview");
   const [navOpen, setNavOpen] = useState(false);
@@ -268,13 +253,10 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const [petTypes, setPetTypes] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => { petaid.petTypes().then((t) => setPetTypes(t.map((x) => ({ id: x.id, name: x.name })))).catch(() => {}); }, []);
-  useEffect(() => {
-    if (!openChatId) return;
-    const t = setInterval(() => refresh(), 3000);
-    return () => clearInterval(t);
-  }, [openChatId, refresh]);
 
-  const openChat = openChatId ? panels.activeChats.find((c) => c.id === openChatId) || null : null;
+  // Live chat list comes from the realtime provider (WebSocket-backed): new
+  // sessions, replies, read receipts, typing and presence arrive without polling.
+  const openChat = openChatId ? chats.find((c) => c.id === openChatId) || null : null;
   const onLogout = () => { void petaid.logout(); };
 
   const respondInquiry = async (text: string) => {
@@ -303,22 +285,19 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
     push(publish ? "Resource published." : "Draft saved.", "success");
   };
   const publishResource = async (id: string) => { await petaid.publishResource(id); await refresh(); push("Resource published.", "success"); };
-  const handleSendChat = async (t: string) => {
-    if (!openChatId) return;
-    try {
-      // First message on an owner-initiated chat auto-joins the vet (→ active).
-      if (openChat?.status === "initiated") await petaid.joinChat(openChatId);
-      await petaid.postChatMessage(openChatId, t);
-      await refresh();
-    } catch (e) {
-      push(e instanceof Error ? e.message : "Message failed to send.", "danger");
+  // First message on an owner-initiated chat auto-joins the vet (→ active).
+  // ChatThread calls this before sending the message.
+  const joinIfNeeded = async (c: Chat) => {
+    if (c.status === "initiated") {
+      await petaid.joinChat(c.id);
+      await refreshChats();
     }
   };
   const handleCloseChat = async () => {
     if (!openChatId) return;
     try {
       await petaid.closeChat(openChatId);
-      await refresh();
+      await refreshChats();
       setOpenChatId(null);
       push("Chat ended.", "success");
     } catch (e) {
@@ -364,7 +343,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const fResources = panels.resources.filter((r) => matches(r.title, r.contentType, r.petTypeName));
   const fGuidance = panels.guidance.filter((g) => matches(g.title, g.emergencyType, ...g.petTypeNames));
   const fFeedback = panels.flaggedFeedback.filter((f) => matches(f.comment, f.targetType));
-  const fChats = panels.activeChats.filter((c) => matches(c.subject));
+  const fChats = liveChats.filter((c) => matches(c.subject));
   const fDonations = panels.donations.filter((d) => matches(d.reference, d.currency));
   const activity = (() => {
     const items: any[] = [];
@@ -379,7 +358,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
     <>
       <div className="admin-shell">
         <div className={`nav-backdrop ${navOpen ? "open" : ""}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
-        <AdminSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} query={query} setQuery={setQuery} />
+        <AdminSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} query={query} setQuery={setQuery} liveChats={liveChats} chatUnread={chatUnread} />
         <main className="admin-main">
           <div className="admin-topbar">
             <button className="nav-toggle" aria-label="Open navigation" onClick={() => setNavOpen(true)}><Icon name="menu" size={18} /></button>
@@ -495,17 +474,24 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
             {active === "chats" && (
               <div className="admin-panel">
-                <div className="admin-panel-head"><div><h2>Live chat sessions</h2><div className="sub">{panels.activeChats.length} open session(s)</div></div></div>
+                <div className="admin-panel-head"><div><h2>Live chat sessions</h2><div className="sub">{liveChats.length} open session(s){chatUnread > 0 ? ` · ${chatUnread} unread` : ""}</div></div></div>
                 <div className="admin-panel-body" style={{ paddingTop: 12 }}>
                   {fChats.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="chat" size={20} /></div><strong>{q ? "No matching chats" : "No active chats"}</strong><p>{q ? "Try a different search term." : "When a pet owner starts a chat, it'll appear here."}</p></div>}
-                  {fChats.map((c) => (
-                    <div className="donation-row" key={c.id} style={{ cursor: "pointer", gridTemplateColumns: "auto 1fr auto auto" }} {...clickable(() => setOpenChatId(c.id))}>
-                      <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent-deep)", display: "grid", placeItems: "center" }}><Icon name="chat" size={16} /></div>
-                      <div className="donation-info"><strong>{c.subject || "Chat session"}</strong> · {c.messages.length} messages<div className="donation-meta">Started {relTime(c.startedAt)}</div></div>
-                      <span className={`status-pill ${c.status === "active" ? "published" : "draft"}`}>{c.status}</span>
-                      <button className="row-btn">Open →</button>
-                    </div>
-                  ))}
+                  {fChats.map((c) => {
+                    const pres = presenceFor(c.ownerId);
+                    const preview = c.lastMessage ? `${c.lastMessage.senderId === account.id ? "You: " : ""}${c.lastMessage.preview}` : "No messages yet";
+                    return (
+                      <div className={`donation-row chat-li ${c.unread > 0 ? "unread" : ""}`} key={c.id} style={{ cursor: "pointer", gridTemplateColumns: "auto 1fr auto auto" }} {...clickable(() => setOpenChatId(c.id))}>
+                        <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--accent-soft)", color: "var(--accent-deep)", display: "grid", placeItems: "center", position: "relative" }}>
+                          <Icon name="chat" size={16} />
+                          <span className={`chat-pdot ${pres.online ? "on" : ""}`} />
+                        </div>
+                        <div className="donation-info"><strong>{c.subject || "Chat session"}</strong>{c.status === "initiated" && <span className="chat-li-new"> · new</span>}<div className="donation-meta chat-preview">{preview}</div></div>
+                        {c.unread > 0 ? <span className="chat-unread">{c.unread}</span> : <span className={`status-pill ${c.status === "active" ? "published" : "draft"}`}>{c.status}</span>}
+                        <span className="chat-li-time" style={{ alignSelf: "center" }}>{relTime(c.lastMessage?.at || c.startedAt)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -593,7 +579,20 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
       {openInquiry && <RespondInquiryModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} onSubmit={respondInquiry} onCloseInquiry={closeOpenInquiry} canRespond={can(snapshot, Permission.INQUIRY_RESPOND)} canClose={can(snapshot, Permission.INQUIRY_CLOSE)} />}
       {showNewResource && <NewResourceModal petTypes={petTypes} onClose={() => setShowNewResource(false)} onSubmit={createAndMaybePublish} />}
-      {openChat && <VetChatModal chat={openChat} myId={account.id} onClose={() => setOpenChatId(null)} onSend={handleSendChat} onCloseChat={handleCloseChat} />}
+      {openChat && (
+        <ChatThread
+          key={openChat.id}
+          chat={openChat}
+          myId={account.id}
+          title="Chat with pet owner"
+          peerName="Pet owner"
+          onClose={() => setOpenChatId(null)}
+          onCloseChat={handleCloseChat}
+          onBeforeSend={joinIfNeeded}
+          waitingBanner={<div className="banner info">Send your first message to join this session and start helping the pet owner.</div>}
+          emptyHint="No messages yet — send a message to begin."
+        />
+      )}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
     </>
   );

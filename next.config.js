@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const WS_API = API.replace(/^http/, "ws"); // ws://… / wss://… of the backend
 const isDev = process.env.NODE_ENV !== "production";
 
 // Content-Security-Policy tuned to what the app actually loads: self, the
@@ -13,7 +14,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' https://cdn.fontshare.com https://fonts.gstatic.com data:",
-  `connect-src 'self' ${API} https://cdn.fontshare.com https://fonts.gstatic.com${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${API} ${WS_API} https://cdn.fontshare.com https://fonts.gstatic.com${isDev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",

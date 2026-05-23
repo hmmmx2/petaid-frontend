@@ -139,6 +139,37 @@ export function BusyButton({
   );
 }
 
+/* ---------- Image helper ----------
+   Reads an image File, downscales it (default max 1280px, JPEG q0.72) and
+   returns a data URL — keeps uploads small (~100-300 KB) so they fit the API's
+   size cap. Shared by pet avatars, inquiry attachments and in-chat photos. */
+export async function fileToDownscaledDataUrl(file: File, max = 1280, quality = 0.72): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = () => rej(new Error("read failed"));
+    fr.readAsDataURL(file);
+  });
+  const img: HTMLImageElement = await new Promise((res, rej) => {
+    const im = new window.Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error("decode failed"));
+    im.src = dataUrl;
+  });
+  let { width, height } = img;
+  if (width > max || height > max) {
+    const scale = max / Math.max(width, height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 /* ---------- ImageGallery ----------
    Thumbnail strip for attached photos (inquiry attachments) with a click-to-
    zoom lightbox. Read-only viewer; used by both the owner and vet inquiry

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { SessionProvider } from "next-auth/react";
 import { PetAidProvider, usePetAid } from "@/lib/petaid";
+import { ChatRealtimeProvider } from "@/lib/chatRealtime";
 import { ToastProvider } from "@/components/ui";
 import { Welcome } from "@/components/views/Welcome";
 import { Guest } from "@/components/views/Guest";
@@ -37,7 +38,9 @@ export default function Page() {
     <SessionProvider>
       <ToastProvider>
         <PetAidProvider>
-          <AppInner />
+          <ChatRealtimeProvider>
+            <AppInner />
+          </ChatRealtimeProvider>
         </PetAidProvider>
       </ToastProvider>
     </SessionProvider>

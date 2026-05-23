@@ -92,8 +92,14 @@ type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
 type ApiQuiz = { id: string; title: string; passing_score: number; resource_id: string; questions: ApiQuizQ[] };
 type ApiQuizAttempt = { id: string; quiz_id: string; score_pct: number; passed: boolean; completed_at: string };
 type ApiInquiry = { id: string; subject: string; question: string; response: string | null; status: string; image_urls?: string[]; submitted_at: string; responded_at: string | null; closed_at: string | null };
-type ApiChatMsg = { id: string; sender_id: string; body: string; sent_at: string };
-type ApiChat = { id: string; subject: string; status: string; started_at: string; ended_at: string | null; messages: ApiChatMsg[] };
+type ApiChatMsg = { id: string; sender_id: string; body: string; image_url?: string | null; sent_at: string };
+type ApiChat = {
+  id: string; subject: string; status: string; started_at: string; ended_at: string | null;
+  pet_owner_id?: string | null; vet_id?: string | null;
+  owner_last_read_at?: string | null; vet_last_read_at?: string | null;
+  unread?: number; last_message?: { sender_id: string; preview: string; sent_at: string } | null;
+  messages: ApiChatMsg[];
+};
 type ApiDonation = { id: string; amount_cents: number; currency: string; status: string; transaction_ref: string | null; processed_at: string | null };
 type ApiFeedback = { id: string; target_type: string; target_id: string; flagged: boolean; rating: number; comment: string; created_at: string };
 type ApiUser = { id: string; full_name: string; initials: string; role: string; display_name: string; pets_count: number; quizzes_count: number; chats_count: number };
@@ -113,8 +119,13 @@ export type QuizQuestion = { prompt: string; choices: string[] };
 export type Quiz = { id: string; title: string; passingScore: number; questions: QuizQuestion[] };
 export type QuizAttempt = { quizId: string; score: number; passed: boolean; takenAt: number };
 export type Inquiry = { id: string; subject: string; question: string; response: string | null; status: string; images: string[]; createdAt: number; respondedAt: number | null };
-export type ChatMessage = { id: string; senderId: string; text: string; at: number };
-export type Chat = { id: string; subject: string; status: string; startedAt: number; messages: ChatMessage[] };
+export type ChatMessage = { id: string; senderId: string; text: string; image: string | null; at: number };
+export type Chat = {
+  id: string; subject: string; status: string; startedAt: number; messages: ChatMessage[];
+  ownerId: string | null; vetId: string | null;
+  ownerLastRead: number | null; vetLastRead: number | null;
+  unread: number; lastMessage: { senderId: string; preview: string; at: number } | null;
+};
 export type Donation = { id: string; amount: number; currency: string; status: string; reference: string | null; at: number | null };
 export type Feedback = { id: string; targetType: string; targetId: string; rating: number; comment: string; flagged: boolean; createdAt: number };
 
@@ -220,9 +231,14 @@ const mapInquiry = (i: ApiInquiry): Inquiry => ({
   images: i.image_urls || [],
   createdAt: ms(i.submitted_at), respondedAt: i.responded_at ? ms(i.responded_at) : null,
 });
-const mapChat = (c: ApiChat): Chat => ({
+export const mapChat = (c: ApiChat): Chat => ({
   id: c.id, subject: c.subject, status: c.status, startedAt: ms(c.started_at),
-  messages: (c.messages || []).map((m) => ({ id: m.id, senderId: m.sender_id, text: m.body, at: ms(m.sent_at) })),
+  messages: (c.messages || []).map((m) => ({ id: m.id, senderId: m.sender_id, text: m.body, image: m.image_url || null, at: ms(m.sent_at) })),
+  ownerId: c.pet_owner_id || null, vetId: c.vet_id || null,
+  ownerLastRead: c.owner_last_read_at ? ms(c.owner_last_read_at) : null,
+  vetLastRead: c.vet_last_read_at ? ms(c.vet_last_read_at) : null,
+  unread: c.unread ?? 0,
+  lastMessage: c.last_message ? { senderId: c.last_message.sender_id, preview: c.last_message.preview, at: ms(c.last_message.sent_at) } : null,
 });
 const mapDonation = (d: ApiDonation): Donation => ({
   id: d.id, amount: d.amount_cents / 100, currency: d.currency, status: d.status,
@@ -406,9 +422,11 @@ export const petaid = {
   closeInquiry: (id: string) => req(`/api/v1/inquiries/${id}/close`, { method: "POST" }),
   startChat: (subject: string) => req<ApiChat>("/api/v1/chats", { method: "POST", body: JSON.stringify({ subject }) }),
   joinChat: (id: string) => req(`/api/v1/chats/${id}/join`, { method: "POST" }),
-  postChatMessage: (id: string, body: string) =>
-    req(`/api/v1/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
-  closeChat: (id: string) => req(`/api/v1/chats/${id}/close`, { method: "POST" }),
+  postChatMessage: (id: string, body: string, imageUrl?: string | null) =>
+    req<ApiChatMsg>(`/api/v1/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ body, image_url: imageUrl ?? null }) }),
+  closeChat: (id: string) => req<ApiChat>(`/api/v1/chats/${id}/close`, { method: "POST" }),
+  markChatRead: (id: string) => req<ApiChat>(`/api/v1/chats/${id}/read`, { method: "POST" }),
+  listChats: () => req<ApiChat[]>("/api/v1/chats"),
   donate: (amountCents: number, currency = "USD", recurring = false) =>
     req<ApiDonation>("/api/v1/donations", { method: "POST", body: JSON.stringify({ amount_cents: amountCents, currency, recurring }) }),
   fetchQuiz: (id: string) => req<ApiQuiz & { questions: ApiQuizQ[] }>(`/api/v1/quizzes/${id}`),

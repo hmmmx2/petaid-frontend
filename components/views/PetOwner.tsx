@@ -3,9 +3,11 @@
 /* Pet Owner dashboard — 1:1 port of views/20-pet-owner.jsx, wired to the API.
    Covers SRS §7.1/7.2/7.4/7.5/7.6/7.7. */
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
-import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
-import { BusyButton, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { useRef, useState } from "react";
+import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
+import { BusyButton, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast, fileToDownscaledDataUrl } from "@/components/ui";
+import { useChatRealtime } from "@/lib/chatRealtime";
+import { ChatThread } from "./ChatThread";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -16,7 +18,7 @@ const SCENARIO_ICONS: Record<string, string> = {
 const RES_ICON = (t: string) => (t === "video" ? "book" : t === "images" || t === "image" ? "paw" : "book");
 
 /* ---------- Sidebar ---------- */
-function POSidebar({ active, setActive, panels, account, onLogout, open, onClose, onOpenPet }: any) {
+function POSidebar({ active, setActive, panels, account, onLogout, open, onClose, onOpenPet, chatUnread = 0 }: any) {
   const go = (id: string) => { setActive(id); onClose?.(); };
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -35,13 +37,13 @@ function POSidebar({ active, setActive, panels, account, onLogout, open, onClose
           { id: "resources", label: "Resources", icon: "book", count: panels.resources.length },
           { id: "quizzes", label: "Quizzes", icon: "quiz", count: panels.quizzes.length },
           { id: "inquiries", label: "Inquiries", icon: "mail", count: panels.inquiries.length },
-          { id: "chats", label: "Vet Chat", icon: "chat" },
+          { id: "chats", label: "Vet Chat", icon: "chat", unread: chatUnread },
           { id: "donations", label: "Donations", icon: "gift" },
         ].map((it: any) => (
-          <button key={it.id} className={`nav-item ${active === it.id ? "active" : ""}`} onClick={() => go(it.id)}>
+          <button key={it.id} className={`nav-item ${active === it.id ? "active" : ""} ${it.unread > 0 ? "has-attention" : ""}`} onClick={() => go(it.id)}>
             <Icon name={it.icon} size={16} />
             <span>{it.label}</span>
-            {it.count != null && it.count > 0 && <span className="nav-count">{it.count}</span>}
+            {it.unread > 0 ? <span className="nav-unread">{it.unread}</span> : it.count != null && it.count > 0 && <span className="nav-count">{it.count}</span>}
           </button>
         ))}
       </nav>
@@ -378,35 +380,6 @@ const StatusPill = ({ status }: { status: string }) => {
   return <span className={`tag-pill ${cls}`}>{status}</span>;
 };
 
-/** Read an image File, downscale it (max 1280px, JPEG q0.72) and return a data
- *  URL — keeps uploads small (~100-300 KB) so they fit the API's size cap. */
-async function fileToDownscaledDataUrl(file: File, max = 1280, quality = 0.72): Promise<string> {
-  const dataUrl: string = await new Promise((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(fr.result as string);
-    fr.onerror = () => rej(new Error("read failed"));
-    fr.readAsDataURL(file);
-  });
-  const img: HTMLImageElement = await new Promise((res, rej) => {
-    const im = new window.Image();
-    im.onload = () => res(im);
-    im.onerror = () => rej(new Error("decode failed"));
-    im.src = dataUrl;
-  });
-  let { width, height } = img;
-  if (width > max || height > max) {
-    const scale = max / Math.max(width, height);
-    width = Math.round(width * scale);
-    height = Math.round(height * scale);
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = width; canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, width, height);
-  return canvas.toDataURL("image/jpeg", quality);
-}
-
 function NewInquiryModal({ onClose, onSubmit }: any) {
   const [question, setQuestion] = useState("");
   const [images, setImages] = useState<string[]>([]);
@@ -586,32 +559,6 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
   );
 }
 
-function ChatModal({ chat, myId, onClose, onSend, onCloseChat }: { chat: Chat; myId: string; onClose: () => void; onSend: (t: string) => Promise<void>; onCloseChat: () => Promise<void> }) {
-  const [text, setText] = useState("");
-  const send = async () => {
-    if (!text.trim()) return;
-    const t = text;
-    setText("");
-    await onSend(t);
-  };
-  return (
-    <Modal title="Chat with the vet team" subtitle={`Status: ${chat.status}`} onClose={onClose} wide
-      footer={<button className="btn-secondary" onClick={onCloseChat}>End chat</button>}>
-      {chat.status === "initiated" && <div className="banner info">Waiting for a vet to join. Switch to the Vet account to demo the other side.</div>}
-      <div className="chat-window">
-        <div className="chat-messages">
-          {chat.messages.length === 0 && <div style={{ color: "var(--ink-3)", fontSize: 12, textAlign: "center", padding: 20 }}>Send the first message to start the conversation.</div>}
-          {chat.messages.map((m) => <div key={m.id} className={`chat-bubble ${m.senderId === myId ? "mine" : "theirs"}`}>{m.text}</div>)}
-        </div>
-        <div className="chat-input">
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a message…" onKeyDown={(e) => e.key === "Enter" && send()} />
-          <BusyButton className="" onClick={send}><Icon name="send" size={14} /></BusyButton>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function FeedbackModal({ target, onClose, onSubmit }: any) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -645,9 +592,11 @@ function FeedbackModal({ target, onClose, onSubmit }: any) {
 export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const { refresh } = usePetAid();
   const { push } = useToast();
+  const { chats, refreshChats, presenceFor } = useChatRealtime();
   const panels = snapshot.dashboard!.panels as PetOwnerPanels;
   const header = snapshot.dashboard!.header;
   const account = snapshot.account!;
+  const chatUnread = chats.reduce((s, c) => s + (c.unread || 0), 0);
 
   const [active, setActive] = useState("dashboard");
   const [navOpen, setNavOpen] = useState(false);
@@ -664,14 +613,9 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const [settingsSection, setSettingsSection] = useState("profile");
   const [showHelp, setShowHelp] = useState(false);
 
-  // Poll while a chat is open so the vet's replies arrive.
-  useEffect(() => {
-    if (!openChatId) return;
-    const t = setInterval(() => refresh(), 3000);
-    return () => clearInterval(t);
-  }, [openChatId, refresh]);
-
-  const openChat = openChatId ? panels.chats.find((c) => c.id === openChatId) || null : null;
+  // Live chat list comes from the realtime provider (WebSocket-backed), so the
+  // vet's replies, read receipts, typing and presence arrive without polling.
+  const openChat = openChatId ? chats.find((c) => c.id === openChatId) || null : null;
 
   /* handlers */
   const handleAddPet = async (d: any) => {
@@ -716,26 +660,18 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const handleStartChat = async () => {
     try {
       const c = await petaid.startChat("Vet chat");
-      await refresh();
+      await refreshChats();
+      setActive("chats");
       setOpenChatId(c.id);
     } catch (e) {
       push(e instanceof Error ? e.message : "Couldn't start the chat. Please try again.", "danger");
-    }
-  };
-  const handleSendChat = async (t: string) => {
-    if (!openChatId) return;
-    try {
-      await petaid.postChatMessage(openChatId, t);
-      await refresh();
-    } catch (e) {
-      push(e instanceof Error ? e.message : "Message failed to send.", "danger");
     }
   };
   const handleCloseChat = async () => {
     if (!openChatId) return;
     try {
       await petaid.closeChat(openChatId);
-      await refresh();
+      await refreshChats();
       setOpenChatId(null);
     } catch (e) {
       push(e instanceof Error ? e.message : "Couldn't close the chat.", "danger");
@@ -767,7 +703,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     <>
       <div className="app-shell">
         <div className={`nav-backdrop ${navOpen ? "open" : ""}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
-        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} onOpenPet={setOpenPet} />
+        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} onOpenPet={setOpenPet} chatUnread={chatUnread} />
         <main className="main">
           <div className="topbar">
             <button className="nav-toggle" aria-label="Open navigation" onClick={() => setNavOpen(true)}><Icon name="menu" size={18} /></button>
@@ -888,14 +824,27 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
             <>
               <div className="section-title"><h2>Vet chat</h2><button className="btn-ink" onClick={handleStartChat}><Icon name="plus" size={13} stroke={2} /> Start new chat</button></div>
               <div style={{ padding: "0 28px" }}>
-                {panels.chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong></div>}
-                {panels.chats.map((c) => (
-                  <div className="list-item" key={c.id} {...clickable(() => setOpenChatId(c.id))}>
-                    <div className="li-icon"><Icon name="chat" size={16} /></div>
-                    <div className="li-body"><div className="li-title">{c.subject || "Vet chat"} · {c.messages.length} messages</div><div className="li-meta">{c.status} · started {relTime(c.startedAt)}</div></div>
-                    <StatusPill status={c.status} />
-                  </div>
-                ))}
+                {chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong>Tap &quot;Start new chat&quot; to talk with a vet.</div>}
+                {chats.map((c) => {
+                  const pres = presenceFor(c.vetId);
+                  const preview = c.lastMessage ? `${c.lastMessage.senderId === account.id ? "You: " : ""}${c.lastMessage.preview}` : "No messages yet";
+                  return (
+                    <div className={`list-item chat-li ${c.unread > 0 ? "unread" : ""}`} key={c.id} {...clickable(() => setOpenChatId(c.id))}>
+                      <div className="li-icon" style={{ position: "relative" }}>
+                        <Icon name="chat" size={16} />
+                        {c.status !== "closed" && <span className={`chat-pdot ${pres.online ? "on" : ""}`} />}
+                      </div>
+                      <div className="li-body">
+                        <div className="li-title">{c.subject || "Vet chat"}</div>
+                        <div className="li-meta chat-preview">{preview}</div>
+                      </div>
+                      <div className="chat-li-aside">
+                        <span className="chat-li-time">{relTime(c.lastMessage?.at || c.startedAt)}</span>
+                        {c.unread > 0 ? <span className="chat-unread">{c.unread}</span> : <StatusPill status={c.status} />}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}
@@ -927,7 +876,18 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
       {openInquiry && <InquiryDetailModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} />}
       {openQuiz && <QuizModal quiz={openQuiz} onClose={() => setOpenQuiz(null)} onSubmit={handleQuizSubmit} />}
       {showDonation && <DonationModal donations={panels.donations} onClose={() => setShowDonation(false)} onSubmit={handleDonate} />}
-      {openChat && <ChatModal chat={openChat} myId={account.id} onClose={() => setOpenChatId(null)} onSend={handleSendChat} onCloseChat={handleCloseChat} />}
+      {openChat && (
+        <ChatThread
+          key={openChat.id}
+          chat={openChat}
+          myId={account.id}
+          title="Chat with the vet team"
+          peerName="Vet team"
+          onClose={() => setOpenChatId(null)}
+          onCloseChat={handleCloseChat}
+          waitingBanner={<div className="banner info">Waiting for a vet to join — you can send messages now and they&apos;ll see them when they pick up the chat.</div>}
+        />
+      )}
       {feedbackTarget && <FeedbackModal target={feedbackTarget} onClose={() => setFeedbackTarget(null)} onSubmit={handleFeedback} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
     </>
