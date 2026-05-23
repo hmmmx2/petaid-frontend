@@ -144,23 +144,45 @@ function AdminInquiryCard({ inquiry, onOpen }: any) {
   );
 }
 
-function RespondInquiryModal({ inquiry, onClose, onSubmit }: any) {
+function RespondInquiryModal({ inquiry, onClose, onSubmit, onCloseInquiry, canRespond, canClose }: any) {
   const [response, setResponse] = useState(inquiry.response || "");
   const [error, setError] = useState<string | null>(null);
+  const isClosed = inquiry.status === "closed";
+  const isResponded = inquiry.status === "responded";
   const submit = async () => {
     setError(null);
+    if (!response.trim()) { setError("Please enter a response before sending."); return; }
     try { await onSubmit(response); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
   };
+  const closeInq = async () => {
+    setError(null);
+    try { await onCloseInquiry(); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
+  };
+  const label = { fontSize: 11, color: "var(--ink-3)", fontWeight: 500, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" } as const;
   return (
-    <Modal title="Respond to inquiry" subtitle={`Submitted ${relTime(inquiry.createdAt)} · status ${inquiry.status}`} onClose={onClose} wide
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Sending…">Send response</BusyButton></>}>
+    <Modal title={isClosed ? "Inquiry detail" : "Respond to inquiry"} subtitle={`Submitted ${relTime(inquiry.createdAt)} · status ${inquiry.status}`} onClose={onClose} wide
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>{isClosed ? "Close" : "Cancel"}</button>
+          {isResponded && canClose && <BusyButton className="btn-secondary" onClick={closeInq} busyLabel="Closing…">Mark as closed</BusyButton>}
+          {!isClosed && canRespond && <BusyButton className="btn-primary" onClick={submit} busyLabel="Sending…">{isResponded ? "Update response" : "Send response"}</BusyButton>}
+        </>
+      }>
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Owner&apos;s question</div>
+        <div style={label as any}>Owner&apos;s question</div>
         <div style={{ padding: 14, background: "var(--gray)", borderRadius: 10, fontSize: 13.5, lineHeight: 1.5 }}>{inquiry.question}</div>
       </div>
-      <Field label="Your response" hint="Plain language, clinically accurate. Up to 2000 characters.">
-        <textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={8} placeholder="Provide your professional guidance…" style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical", fontSize: 13.5 }} />
-      </Field>
+      {isClosed ? (
+        <>
+          <div style={label as any}>Response</div>
+          <div style={{ padding: 14, background: "var(--gray)", borderRadius: 10, fontSize: 13.5, lineHeight: 1.5 }}>{inquiry.response || "No response was recorded."}</div>
+          <div className="banner info" style={{ marginTop: 12 }}>This inquiry is closed — it can no longer be edited.</div>
+        </>
+      ) : (
+        <Field label="Your response" hint="Plain language, clinically accurate. Up to 2000 characters.">
+          <textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={8} placeholder="Provide your professional guidance…" style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical", fontSize: 13.5 }} />
+        </Field>
+      )}
       {error && <div className="banner error">{error}</div>}
     </Modal>
   );
@@ -259,6 +281,12 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
     await refresh();
     setOpenInquiry(null);
     push("Response sent.", "success");
+  };
+  const closeOpenInquiry = async () => {
+    await petaid.closeInquiry(openInquiry.id);
+    await refresh();
+    setOpenInquiry(null);
+    push("Inquiry closed.", "success");
   };
   const createAndMaybePublish = async (data: any, publish: boolean) => {
     const ctMap: Record<string, string> = { doc: "pdf", image: "images", video: "video" };
@@ -547,7 +575,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
         </main>
       </div>
 
-      {openInquiry && <RespondInquiryModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} onSubmit={respondInquiry} />}
+      {openInquiry && <RespondInquiryModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} onSubmit={respondInquiry} onCloseInquiry={closeOpenInquiry} canRespond={can(snapshot, Permission.INQUIRY_RESPOND)} canClose={can(snapshot, Permission.INQUIRY_CLOSE)} />}
       {showNewResource && <NewResourceModal petTypes={petTypes} onClose={() => setShowNewResource(false)} onSubmit={createAndMaybePublish} />}
       {openChat && <VetChatModal chat={openChat} myId={account.id} onClose={() => setOpenChatId(null)} onSend={handleSendChat} onCloseChat={handleCloseChat} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}

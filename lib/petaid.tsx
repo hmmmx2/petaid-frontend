@@ -396,6 +396,7 @@ export const petaid = {
     req("/api/v1/inquiries", { method: "POST", body: JSON.stringify({ subject, question }) }),
   respondInquiry: (id: string, response: string) =>
     req(`/api/v1/inquiries/${id}/respond`, { method: "POST", body: JSON.stringify({ response }) }),
+  closeInquiry: (id: string) => req(`/api/v1/inquiries/${id}/close`, { method: "POST" }),
   startChat: (subject: string) => req<ApiChat>("/api/v1/chats", { method: "POST", body: JSON.stringify({ subject }) }),
   joinChat: (id: string) => req(`/api/v1/chats/${id}/join`, { method: "POST" }),
   postChatMessage: (id: string, body: string) =>
