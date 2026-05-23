@@ -384,13 +384,33 @@ export const petaid = {
   /** Sign in through Auth.js (Credentials → FastAPI /auth/login). Returns the
    *  Auth.js result; `ok` true on success, otherwise `error`/`code` carries
    *  'mfa_required' / 'account_locked' / generic. */
-  async login(email: string, password: string, mfaToken?: string) {
-    return signIn("credentials", {
-      email,
-      password,
-      mfaToken: mfaToken || "",
-      redirect: false,
-    });
+  /** Sign in through Auth.js. Returns a normalised result whose `ok` is the
+   *  source of truth — Auth.js v5 (beta) does NOT reliably surface credential
+   *  failures via the signIn return value (it may throw, or resolve without an
+   *  `error`), so we confirm success by checking the established session. `code`
+   *  carries 'mfa_required' / 'account_locked' / 'invalid_credentials'. */
+  async login(email: string, password: string, mfaToken?: string): Promise<{ ok: boolean; code?: string }> {
+    let code: string | undefined;
+    try {
+      const res = (await signIn("credentials", {
+        email,
+        password,
+        mfaToken: mfaToken || "",
+        redirect: false,
+      })) as { error?: string | null; code?: string | null } | undefined;
+      code = res?.code ?? (res?.error ? "invalid_credentials" : undefined);
+    } catch (e) {
+      // Some Auth.js v5 beta builds throw on failed credentials.
+      code = (e as { code?: string })?.code ?? "invalid_credentials";
+    }
+    // Source of truth: did a session actually get established?
+    const s = await getSession();
+    const token = (s as { accessToken?: string } | null)?.accessToken ?? null;
+    if (token) {
+      setAccessToken(token);
+      return { ok: true };
+    }
+    return { ok: false, code: code ?? "invalid_credentials" };
   },
   async logout() {
     setAccessToken(null);

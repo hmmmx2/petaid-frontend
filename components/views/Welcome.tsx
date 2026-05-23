@@ -34,28 +34,21 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
     return {};
   };
 
-  // Auth.js signIn(redirect:false) returns { ok, error?, code? }. Our
-  // CredentialsSignin subclasses surface 'mfa_required' / 'account_locked'.
-  function reasonOf(res: { error?: string | null; code?: string | null } | undefined): string {
-    return `${res?.code ?? ""} ${res?.error ?? ""}`;
-  }
-
   async function submitLogin(mfa?: string) {
     setBanner(null);
     setLoginErrors({});
-    const res = await petaid.login(loginEmail, loginPassword, mfa);
-    // NB: Auth.js v5 returns ok:true even on credentials failure — the real
-    // signal is the absence of `error`.
-    if (res && !res.error) {
+    // `login()` resolves with a reliable { ok, code } (success is confirmed by
+    // an established session, not by signIn's flaky return flags).
+    const r = await petaid.login(loginEmail, loginPassword, mfa);
+    if (r.ok) {
       push(`Welcome back, ${loginEmail.split("@")[0]}.`, "success");
       onAuthed();
       return;
     }
-    const reason = reasonOf(res);
-    if (reason.includes("mfa_required")) {
+    if (r.code === "mfa_required") {
       setMode("mfa");
       setBanner({ kind: "info", text: "Multi-factor authentication required. Enter the 6-digit code from your authenticator app." });
-    } else if (reason.includes("account_locked")) {
+    } else if (r.code === "account_locked") {
       setBanner({ kind: "error", text: "Too many failed attempts. Please wait ~30 seconds and try again." });
     } else {
       setBanner({ kind: "error", text: "The email or password you entered is incorrect." });
@@ -64,8 +57,8 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
 
   async function submitMfa() {
     setBanner(null);
-    const res = await petaid.login(loginEmail, loginPassword, mfaToken);
-    if (res && !res.error) {
+    const r = await petaid.login(loginEmail, loginPassword, mfaToken);
+    if (r.ok) {
       push("Welcome back.", "success");
       onAuthed();
     } else {
@@ -119,8 +112,8 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       return;
     }
     // Email confirmed → establish the Auth.js session with the same password.
-    const res = await petaid.login(pendingEmail, reg.password);
-    if (res && !res.error) {
+    const r = await petaid.login(pendingEmail, reg.password);
+    if (r.ok) {
       push("Email verified — welcome to PetAid.", "success");
       onAuthed();
     } else {

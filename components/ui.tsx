@@ -122,7 +122,15 @@ export function BusyButton({
 }) {
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Set to true on (re)mount, not just at init: React StrictMode double-invokes
+  // effects in dev (setup → cleanup → setup), and the cleanup flips this to
+  // false. Without re-setting it on setup, `mounted.current` stays false and the
+  // `finally` below skips setBusy(false) — leaving the button stuck on its busy
+  // label (e.g. "Signing in…") after the first async click.
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const handle = async () => {
     if (busy || disabled) return;
     setBusy(true);
