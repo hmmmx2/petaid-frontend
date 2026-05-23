@@ -1,105 +1,176 @@
-# petaid-frontend
+# PetAid — Frontend (Next.js)
 
-Next.js 14 frontend for [PetAid](https://github.com/) — a warm, light-mode web app for pet first-aid guidance and veterinary support.
+The web user interface for **PetAid**, a warm, light-mode app for pet first-aid guidance and
+veterinary support. It serves two role-based dashboards — **Pet Owner** and **Veterinary Expert** —
+plus a guest first-aid browser and the full authentication flow.
 
-- **Framework:** Next.js 14 App Router · TypeScript (strict) · React 18
-- **Styling:** CSS Modules + a single design-token sheet (`app/globals.css`)
-- **Auth:** JWT bearer tokens stored in `localStorage` with automatic refresh
+This app talks to the **[`petaid-backend`](https://github.com/hmmmx2/petaid-backend)** (FastAPI) over
+HTTPS and a WebSocket. It does **not** connect to the database directly.
+
+> Built for **SWE30003 — Software Architectures & Design, Assignment 3**.
+
+- **Framework:** Next.js 14 (App Router) · React 18 · TypeScript (strict)
+- **Auth:** Auth.js / NextAuth v5 (Credentials → FastAPI), tokens in an encrypted **httpOnly** cookie
+- **Real-time:** native WebSocket client for live chat (messages, typing, presence, read receipts)
+- **Styling:** one global design-token stylesheet (`app/petaid.css`) + inline styles
 - **Deploys to:** Vercel
 
-The backend lives in a separate repo: **petaid-backend** (FastAPI on Railway). This app talks to it only over HTTPS via `NEXT_PUBLIC_API_BASE_URL`.
+## Architecture at a glance
 
-## Quick start (local)
+```
+Browser ──►  petaid-frontend (Next.js, this repo)  ──HTTPS/JSON──►  petaid-backend (FastAPI)  ──►  PostgreSQL (Supabase)
+                                                     ◄──WebSocket──   /api/v1/ws/chat
+```
+
+> **Note on Supabase:** the database is owned by the backend. The frontend reaches data **only**
+> through the FastAPI API, so this app does *not* use the Supabase JS client or anon key. Keeping a
+> single data path keeps RBAC, validation and rate limits in one place (the backend).
+
+---
+
+## 1. Prerequisites
+
+| Tool | Version | Notes |
+| --- | --- | --- |
+| **Node.js** | 18.17+ or 20+ | `node --version` |
+| **npm** | 9+ (ships with Node) | `npm --version` |
+| **A running `petaid-backend`** | – | local on `http://localhost:8000` or a deployed URL |
+| **Git** | any | to clone |
+
+Development & testing platform: **Windows 11 + PowerShell**, editor **VS Code**, tested in Chrome.
+
+> **Set up the backend first.** Follow the README in
+> [`petaid-backend`](https://github.com/hmmmx2/petaid-backend) so the API is running and the demo
+> accounts are seeded before you sign in here.
+
+---
+
+## 2. Clone the repository
+
+```powershell
+git clone https://github.com/hmmmx2/petaid-frontend.git
+cd petaid-frontend
+```
+
+## 3. Install dependencies
 
 ```powershell
 npm install
-Copy-Item .env.example .env.local
-# Edit .env.local — point NEXT_PUBLIC_API_BASE_URL at your backend
-# (e.g. http://localhost:8000 for a locally-running petaid-backend)
-
-npm run dev
-# → http://localhost:3000
 ```
 
-Sign in with the seeded demo credentials from the backend:
+## 4. Configure environment variables
 
-- **Email:** `alwin@petaid.local`
-- **Password:** `petaid-demo-2026`
+```powershell
+Copy-Item .env.example .env.local       # macOS/Linux:  cp .env.example .env.local
+```
+
+Edit `.env.local`:
+
+```dotenv
+# Public — the base URL of the FastAPI backend (exposed to the browser)
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+
+# Auth.js (NextAuth v5) — server-only secret. REQUIRED.
+AUTH_SECRET=<paste a long random string>
+AUTH_TRUST_HOST=true
+```
+
+Generate `AUTH_SECRET`:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+> Only variables prefixed `NEXT_PUBLIC_` are exposed to the browser. `AUTH_SECRET` must **not** be
+> public — it encrypts the session cookie that holds the backend tokens.
+
+## 5. Run the dev server
+
+```powershell
+npm run dev
+```
+
+Open <http://localhost:3000>.
+
+## 6. Sign in (demo accounts seeded by the backend)
+
+| Role | Email | Password | MFA |
+| --- | --- | --- | --- |
+| **Pet Owner** | `alwin@petaid.com` | `pet123` | none |
+| **Veterinary Expert** | `kavitha@petaid.com` | `vet123` | enter the 6-digit TOTP code the backend seed prints |
+
+Or click **“Browse as guest”** to view the public first-aid library without an account.
+
+---
 
 ## Scripts
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Next dev server with hot reload |
+| `npm run dev` | Dev server with hot reload (http://localhost:3000) |
 | `npm run build` | Production build |
-| `npm run start` | Run the production build locally |
-| `npm run lint` | ESLint (next/core-web-vitals config) |
+| `npm run start` | Serve the production build locally |
+| `npm run lint` | ESLint (`next/core-web-vitals`) |
 | `npm run typecheck` | `tsc --noEmit` strict type check |
 
 ## Project layout
 
 ```
 app/
-├── layout.tsx          Root layout, imports globals.css
-├── page.tsx            Redirects to /dashboard or /login based on token
-├── globals.css         Design tokens (coral, teal, ivory, etc.)
-├── login/page.tsx      JWT login form
-├── register/page.tsx   Registration form
-└── dashboard/
-    ├── page.tsx        Three-column dashboard
-    └── dashboard.module.css
-components/             Sidebar · Topbar · StatCards · ActivityChart · ResourcesCard · RightPanel · icons
+├── layout.tsx                Root layout (fonts, imports app/petaid.css)
+├── page.tsx                  Role router: Welcome / Guest / PetOwner / VetExpert from the session
+├── petaid.css                Global design tokens + component styles
+└── api/auth/[...nextauth]/   NextAuth route handler
+auth.ts                       Auth.js config: Credentials → FastAPI /auth/login, token refresh in JWT callback
+middleware.ts                 Route protection
+components/
+├── ui.tsx                    Shared primitives (Icon, Modal, BusyButton, ImageGallery, toasts, helpers)
+└── views/
+    ├── Welcome.tsx           Sign in / register / email-verify / MFA
+    ├── Guest.tsx             Public first-aid browser
+    ├── PetOwner.tsx          Pet Owner dashboard
+    ├── VetExpert.tsx         Veterinary Expert (admin) dashboard
+    ├── ChatThread.tsx        Shared real-time chat UI (used by both roles)
+    ├── Settings.tsx · Help.tsx · Popovers.tsx
 lib/
-├── api.ts              Typed fetch client + token storage + auto-refresh
-└── types.ts            DTOs mirroring backend Pydantic schemas
-next.config.js          reactStrictMode, typed routes
-vercel.json             Vercel build config
+├── petaid.tsx                API client + snapshot/types + React context (PetAidProvider)
+├── chatSocket.ts             Reconnecting WebSocket client (heartbeat + backoff)
+└── chatRealtime.tsx          Live chat state provider (messages/typing/presence/read)
+types/next-auth.d.ts          Session type augmentation
+next.config.js                Strict mode, security headers (CSP allows the backend ws/wss origin)
+vercel.json
 ```
+
+## How auth works
+
+- Sign-in uses the **Credentials** provider, which calls `POST /api/v1/auth/login` on the backend
+  (so MFA, lockout and RBAC stay server-owned).
+- The backend’s **access + refresh tokens are stored in the encrypted, httpOnly session cookie**.
+  Only the short-lived access token is exposed to the client to call the API; the refresh token never
+  leaves the server and is rotated automatically in the Auth.js `jwt` callback.
+- On a `401`, the client refreshes the session once and retries.
 
 ## Environment variables
 
-| Var | Where | Notes |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | client + server | Public — exposed to the browser. e.g. `https://api.petaid.example.com` |
-
-Anything secret must **not** start with `NEXT_PUBLIC_` (Next.js inlines those into the bundle).
-
-## Backend contract
-
-This app expects an API matching the OpenAPI schema served by `petaid-backend` at `/openapi.json`. The TypeScript types in [lib/types.ts](lib/types.ts) mirror the Pydantic schemas in the backend's `app/schemas/`. When the backend's schema changes:
-
-1. Pull the new `openapi.json` from the backend.
-2. Update [lib/types.ts](lib/types.ts) (or regenerate with `openapi-typescript`).
-3. Update any components that depend on the changed shape.
-
-The auth contract:
-
-- `POST /api/v1/auth/login` → `{ access_token, refresh_token, token_type }`
-- All authed requests send `Authorization: Bearer <access_token>`.
-- On `401`, the client transparently calls `POST /api/v1/auth/refresh` with the refresh token; on failure it clears tokens and redirects to `/login`.
+| Var | Where | Required | Notes |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_API_BASE_URL` | client + server | yes | Base URL of the backend, e.g. `http://localhost:8000` or your Railway URL |
+| `AUTH_SECRET` | server only | yes | Encrypts the session cookie — keep secret |
+| `AUTH_TRUST_HOST` | server only | recommended | `true` for local/non-Vercel hosts |
 
 ## Deployment — Vercel
 
-1. Import this repo into Vercel.
-2. Framework preset: **Next.js** (auto-detected).
-3. Environment variable: `NEXT_PUBLIC_API_BASE_URL=https://<your-railway-backend>`.
-4. Make sure the backend's `CORS_ORIGINS` includes your Vercel preview + production URLs.
-5. Deploy. Subsequent pushes to the default branch trigger production deploys; PRs get preview URLs.
+1. Import this repo into Vercel (framework preset **Next.js** is auto-detected).
+2. Set environment variables:
+   - `NEXT_PUBLIC_API_BASE_URL=https://<your-railway-backend>`
+   - `AUTH_SECRET=<long random string>`
+   - `AUTH_TRUST_HOST=true`
+3. Make sure the backend’s `CORS_ORIGINS` includes your Vercel preview **and** production URLs, and
+   that the backend allows the frontend origin to open the WebSocket.
+4. Deploy. Pushes to the default branch ship to production; PRs get preview URLs.
 
-## Best practices baked in
+## Coding standard
 
-- TypeScript strict mode, typed routes (`experimental.typedRoutes`).
-- CSS Modules per-route — no global class collisions; tokens via CSS custom properties.
-- Single source of truth for design tokens (`globals.css`), styled exactly to the mockup palette.
-- Server-friendly client components: the dashboard page is a `"use client"` page only because of `useEffect`/`useState`; data fetching is colocated.
-- No secrets in the bundle — only `NEXT_PUBLIC_*` env vars are exposed.
-- JWT refresh handled transparently in `lib/api.ts`; auth state never leaks into components.
-- `poweredByHeader: false` to avoid advertising the framework.
-
-## Next steps (not yet implemented)
-
-- Replace `localStorage` token storage with httpOnly cookies + a tiny Next.js route handler for SSR-friendly auth.
-- Add `openapi-typescript` postinstall hook to regenerate `lib/types.ts` automatically.
-- Pages for: My Pets, Resources, Take a Quiz, Chat with Vet, Submit Inquiry.
-- Loading skeletons in place of the plain "Loading dashboard…" state.
-- E2E tests with Playwright.
+TypeScript **strict** mode throughout; linting via **ESLint** with the official
+[`eslint-config-next`](https://nextjs.org/docs/app/api-reference/config/eslint) (`next/core-web-vitals`).
+Components follow the standard React/Next.js conventions (function components, hooks, colocated state).
