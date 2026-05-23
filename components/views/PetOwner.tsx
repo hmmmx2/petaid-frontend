@@ -3,9 +3,9 @@
 /* Pet Owner dashboard — 1:1 port of views/20-pet-owner.jsx, wired to the API.
    Covers SRS §7.1/7.2/7.4/7.5/7.6/7.7. */
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
-import { BusyButton, Field, Icon, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -232,18 +232,88 @@ const StatusPill = ({ status }: { status: string }) => {
   return <span className={`tag-pill ${cls}`}>{status}</span>;
 };
 
+/** Read an image File, downscale it (max 1280px, JPEG q0.72) and return a data
+ *  URL — keeps uploads small (~100-300 KB) so they fit the API's size cap. */
+async function fileToDownscaledDataUrl(file: File, max = 1280, quality = 0.72): Promise<string> {
+  const dataUrl: string = await new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = () => rej(new Error("read failed"));
+    fr.readAsDataURL(file);
+  });
+  const img: HTMLImageElement = await new Promise((res, rej) => {
+    const im = new window.Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error("decode failed"));
+    im.src = dataUrl;
+  });
+  let { width, height } = img;
+  if (width > max || height > max) {
+    const scale = max / Math.max(width, height);
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return dataUrl;
+  ctx.drawImage(img, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
 function NewInquiryModal({ onClose, onSubmit }: any) {
   const [question, setQuestion] = useState("");
+  const [images, setImages] = useState<string[]>([]);
+  const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const MAX = 4;
+  const onFiles = async (files: FileList | null) => {
+    if (!files) return;
+    setError(null);
+    setReading(true);
+    try {
+      const incoming: string[] = [];
+      for (const f of Array.from(files)) {
+        if (!f.type.startsWith("image/")) continue;
+        incoming.push(await fileToDownscaledDataUrl(f));
+      }
+      setImages((prev) => [...prev, ...incoming].slice(0, MAX));
+    } catch {
+      setError("Couldn't process that image. Try another file.");
+    } finally {
+      setReading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
   const submit = async () => {
     setError(null);
-    try { await onSubmit(question); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
+    if (!question.trim()) { setError("Please describe your pet's condition."); return; }
+    try { await onSubmit(question, images); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
   };
   return (
     <Modal title="Submit an inquiry" subtitle="A veterinary expert will respond within the dashboard." onClose={onClose}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Submitting…">Submit</BusyButton></>}>
       <Field label="Your question" error={error} hint="Up to 1000 characters.">
         <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="Describe the situation, your pet's symptoms, and any timing details…" rows={6} maxLength={1000} style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical" }} />
+      </Field>
+      <Field label="Photos (optional)" hint={`Add up to ${MAX} photos of your pet's condition.`}>
+        <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => onFiles(e.target.files)} />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+          {images.map((src, i) => (
+            <div key={i} style={{ position: "relative", width: 64, height: 64, borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)" }}>
+              <img src={src} alt={`Attachment ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <button type="button" aria-label="Remove photo" onClick={() => setImages(images.filter((_, j) => j !== i))}
+                style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", fontSize: 12, lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
+            </div>
+          ))}
+          {images.length < MAX && (
+            <button type="button" className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={reading} aria-label="Add photo"
+              style={{ width: 64, height: 64, padding: 0, display: "grid", placeItems: "center" }}>
+              {reading ? "…" : <Icon name="upload" size={18} />}
+            </button>
+          )}
+        </div>
       </Field>
     </Modal>
   );
@@ -256,6 +326,7 @@ function InquiryDetailModal({ inquiry, onClose }: any) {
         <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 4 }}>YOUR QUESTION</div>
         <div style={{ padding: 12, background: "var(--gray)", borderRadius: 10, fontSize: 13.5 }}>{inquiry.question}</div>
       </div>
+      <ImageGallery images={inquiry.images} label="Your photos" />
       {inquiry.response ? (
         <div>
           <div style={{ fontSize: 12, color: "var(--ink-3)", fontWeight: 500, marginBottom: 4 }}>VET RESPONSE</div>
@@ -462,8 +533,8 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     setShowAddPet(false);
     push("Pet added.", "success");
   };
-  const handleNewInquiry = async (q: string) => {
-    await petaid.submitInquiry(q.slice(0, 120) || "Inquiry", q);
+  const handleNewInquiry = async (q: string, images: string[] = []) => {
+    await petaid.submitInquiry(q.slice(0, 120) || "Inquiry", q, images);
     await refresh();
     setShowInquiry(false);
     push("Inquiry sent. A vet will respond soon.", "success");

@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
-import { BusyButton, Field, Icon, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, ImageGallery, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -139,7 +139,7 @@ function AdminInquiryCard({ inquiry, onOpen }: any) {
       <div className="top"><span className={`priority ${isUrgent ? "urgent" : "normal"}`}>{isUrgent ? "Urgent" : "Normal"}</span><span className="topic">#{inquiry.id.slice(-5).toUpperCase()}</span></div>
       <div className="text">{inquiry.question.slice(0, 100)}{inquiry.question.length > 100 ? "…" : ""}</div>
       {inquiry.response && <div className="reply">↳ {inquiry.response.slice(0, 90)}{inquiry.response.length > 90 ? "…" : ""}</div>}
-      <div className="foot"><span className="avatar">PO</span><span>Pet owner</span><span className="time">{relTime(inquiry.createdAt)}</span></div>
+      <div className="foot"><span className="avatar">PO</span><span>Pet owner</span>{inquiry.images?.length > 0 && <span title={`${inquiry.images.length} photo(s)`}>📷 {inquiry.images.length}</span>}<span className="time">{relTime(inquiry.createdAt)}</span></div>
     </div>
   );
 }
@@ -172,6 +172,7 @@ function RespondInquiryModal({ inquiry, onClose, onSubmit, onCloseInquiry, canRe
         <div style={label as any}>Owner&apos;s question</div>
         <div style={{ padding: 14, background: "var(--gray)", borderRadius: 10, fontSize: 13.5, lineHeight: 1.5 }}>{inquiry.question}</div>
       </div>
+      <ImageGallery images={inquiry.images} label="Owner's photos" />
       {isClosed ? (
         <>
           <div style={label as any}>Response</div>
@@ -304,11 +305,26 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   const publishResource = async (id: string) => { await petaid.publishResource(id); await refresh(); push("Resource published.", "success"); };
   const handleSendChat = async (t: string) => {
     if (!openChatId) return;
-    if (openChat?.status === "initiated") await petaid.joinChat(openChatId);
-    await petaid.postChatMessage(openChatId, t);
-    await refresh();
+    try {
+      // First message on an owner-initiated chat auto-joins the vet (→ active).
+      if (openChat?.status === "initiated") await petaid.joinChat(openChatId);
+      await petaid.postChatMessage(openChatId, t);
+      await refresh();
+    } catch (e) {
+      push(e instanceof Error ? e.message : "Message failed to send.", "danger");
+    }
   };
-  const handleCloseChat = async () => { if (openChatId) { await petaid.closeChat(openChatId); await refresh(); setOpenChatId(null); } };
+  const handleCloseChat = async () => {
+    if (!openChatId) return;
+    try {
+      await petaid.closeChat(openChatId);
+      await refresh();
+      setOpenChatId(null);
+      push("Chat ended.", "success");
+    } catch (e) {
+      push(e instanceof Error ? e.message : "Couldn't end the chat.", "danger");
+    }
+  };
 
   const onAction = (a: { type: string; payload?: string; section?: string }) => {
     if (a.type === "open_inquiry_vet") { const i = panels.inquiriesByStatus.pending.find((x) => x.id === a.payload); if (i) { setActive("inquiries"); setOpenInquiry(i); } }

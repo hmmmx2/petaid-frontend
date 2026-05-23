@@ -139,6 +139,34 @@ export function BusyButton({
   );
 }
 
+/* ---------- ImageGallery ----------
+   Thumbnail strip for attached photos (inquiry attachments) with a click-to-
+   zoom lightbox. Read-only viewer; used by both the owner and vet inquiry
+   modals so they render attachments identically. */
+export function ImageGallery({ images, label = "Attached photos" }: { images?: string[]; label?: string }) {
+  const [zoom, setZoom] = useState<string | null>(null);
+  if (!images || images.length === 0) return null;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {images.map((src, i) => (
+          <button key={i} type="button" onClick={() => setZoom(src)} aria-label={`View photo ${i + 1}`}
+            style={{ width: 84, height: 84, borderRadius: 10, overflow: "hidden", border: "1px solid var(--line)", padding: 0, cursor: "zoom-in" }}>
+            <img src={src} alt={`Photo ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          </button>
+        ))}
+      </div>
+      {zoom && (
+        <div onClick={() => setZoom(null)} role="dialog" aria-label="Photo preview"
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 200, display: "grid", placeItems: "center", padding: 24, cursor: "zoom-out" }}>
+          <img src={zoom} alt="Attached photo" style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 12 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Modal ---------- */
 export const Modal = ({
   title,

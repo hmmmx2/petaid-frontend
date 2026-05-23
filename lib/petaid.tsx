@@ -91,7 +91,7 @@ type ApiGuidance = { id: string; title: string; emergency_type: string; summary:
 type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
 type ApiQuiz = { id: string; title: string; passing_score: number; resource_id: string; questions: ApiQuizQ[] };
 type ApiQuizAttempt = { id: string; quiz_id: string; score_pct: number; passed: boolean; completed_at: string };
-type ApiInquiry = { id: string; subject: string; question: string; response: string | null; status: string; submitted_at: string; responded_at: string | null; closed_at: string | null };
+type ApiInquiry = { id: string; subject: string; question: string; response: string | null; status: string; image_urls?: string[]; submitted_at: string; responded_at: string | null; closed_at: string | null };
 type ApiChatMsg = { id: string; sender_id: string; body: string; sent_at: string };
 type ApiChat = { id: string; subject: string; status: string; started_at: string; ended_at: string | null; messages: ApiChatMsg[] };
 type ApiDonation = { id: string; amount_cents: number; currency: string; status: string; transaction_ref: string | null; processed_at: string | null };
@@ -112,7 +112,7 @@ export type Resource = { id: string; title: string; contentType: string; status:
 export type QuizQuestion = { prompt: string; choices: string[] };
 export type Quiz = { id: string; title: string; passingScore: number; questions: QuizQuestion[] };
 export type QuizAttempt = { quizId: string; score: number; passed: boolean; takenAt: number };
-export type Inquiry = { id: string; subject: string; question: string; response: string | null; status: string; createdAt: number; respondedAt: number | null };
+export type Inquiry = { id: string; subject: string; question: string; response: string | null; status: string; images: string[]; createdAt: number; respondedAt: number | null };
 export type ChatMessage = { id: string; senderId: string; text: string; at: number };
 export type Chat = { id: string; subject: string; status: string; startedAt: number; messages: ChatMessage[] };
 export type Donation = { id: string; amount: number; currency: string; status: string; reference: string | null; at: number | null };
@@ -214,6 +214,7 @@ const mapQuiz = (q: ApiQuiz): Quiz => ({
 });
 const mapInquiry = (i: ApiInquiry): Inquiry => ({
   id: i.id, subject: i.subject, question: i.question, response: i.response, status: i.status,
+  images: i.image_urls || [],
   createdAt: ms(i.submitted_at), respondedAt: i.responded_at ? ms(i.responded_at) : null,
 });
 const mapChat = (c: ApiChat): Chat => ({
@@ -392,8 +393,8 @@ export const petaid = {
   /* domain actions */
   addPet: (b: { name: string; pet_type_id: string; breed?: string; age_years?: number | null; health_notes?: string }) =>
     req("/api/v1/pets", { method: "POST", body: JSON.stringify(b) }),
-  submitInquiry: (subject: string, question: string) =>
-    req("/api/v1/inquiries", { method: "POST", body: JSON.stringify({ subject, question }) }),
+  submitInquiry: (subject: string, question: string, images: string[] = []) =>
+    req("/api/v1/inquiries", { method: "POST", body: JSON.stringify({ subject, question, images }) }),
   respondInquiry: (id: string, response: string) =>
     req(`/api/v1/inquiries/${id}/respond`, { method: "POST", body: JSON.stringify({ response }) }),
   closeInquiry: (id: string) => req(`/api/v1/inquiries/${id}/close`, { method: "POST" }),
