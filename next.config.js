@@ -12,7 +12,7 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.supabase.co",
   "font-src 'self' https://cdn.fontshare.com https://fonts.gstatic.com data:",
   `connect-src 'self' ${API} ${WS_API} https://cdn.fontshare.com https://fonts.gstatic.com${isDev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",
