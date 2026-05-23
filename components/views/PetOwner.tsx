@@ -16,7 +16,7 @@ const SCENARIO_ICONS: Record<string, string> = {
 const RES_ICON = (t: string) => (t === "video" ? "book" : t === "images" || t === "image" ? "paw" : "book");
 
 /* ---------- Sidebar ---------- */
-function POSidebar({ active, setActive, panels, account, onLogout, open, onClose }: any) {
+function POSidebar({ active, setActive, panels, account, onLogout, open, onClose, onOpenPet }: any) {
   const go = (id: string) => { setActive(id); onClose?.(); };
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -49,7 +49,7 @@ function POSidebar({ active, setActive, panels, account, onLogout, open, onClose
         <div className="section-label">My Pets</div>
         <div className="nav">
           {panels.pets.map((p: any) => (
-            <div className="member" key={p.id}>
+            <div className="member" key={p.id} {...clickable(() => { onOpenPet?.(p); onClose?.(); })} title={`View ${p.name}'s profile`}>
               <div className="member-avatar">{p.emoji}</div>
               <div className="member-info">
                 <div className="member-name">{p.name}</div>
@@ -122,11 +122,11 @@ function POHero({ stats }: { stats: PetOwnerPanels["stats"] }) {
 }
 
 /* ---------- Pets ---------- */
-function PetsRow({ pets, onAdd }: any) {
+function PetsRow({ pets, onAdd, onOpen }: any) {
   return (
     <div className="pets-row">
       {pets.map((p: any) => (
-        <div className="pet-card" key={p.id}>
+        <div className="pet-card" key={p.id} {...clickable(() => onOpen?.(p))} title={`View ${p.name}'s profile`}>
           <div className="pet-avatar-lg">{p.emoji}</div>
           <div className="pet-info">
             <div className="pet-name-lg">{p.name}</div>
@@ -176,6 +176,90 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
         <input value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="e.g. Golden Retriever" maxLength={60} />
       </Field>
       {errors.form && <div className="banner error">{errors.form}</div>}
+    </Modal>
+  );
+}
+
+function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(pet.name);
+  const [typeId, setTypeId] = useState(pet.typeId || petTypes[0]?.id || "");
+  const [breed, setBreed] = useState(pet.breed || "");
+  const [age, setAge] = useState(String(pet.age ?? 0));
+  const [notes, setNotes] = useState(pet.notes || "");
+  const [error, setError] = useState<string | null>(null);
+  const save = async () => {
+    setError(null);
+    if (!name.trim()) { setError("Name is required."); return; }
+    try {
+      await onSave({ name: name.trim(), pet_type_id: typeId, breed: breed.trim(), age_years: Number(age) || 0, health_notes: notes });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Couldn't save.");
+    }
+  };
+  const remove = async () => {
+    if (!window.confirm(`Remove ${pet.name}? This permanently deletes the pet and its profile.`)) return;
+    setError(null);
+    try { await onDelete(); } catch (e) { setError(e instanceof Error ? e.message : "Couldn't remove."); }
+  };
+  const Row = ({ label, value }: { label: string; value: any }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderBottom: "1px solid var(--line)" }}>
+      <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{label}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 500, textAlign: "right" }}>{value || "—"}</span>
+    </div>
+  );
+  return (
+    <Modal
+      title={editing ? `Edit ${pet.name}` : pet.name}
+      subtitle={editing ? "Update your pet's details." : `${pet.typeName || "Pet"} profile`}
+      onClose={onClose}
+      footer={
+        editing ? (
+          <>
+            <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+            <BusyButton className="btn-primary" onClick={save} busyLabel="Saving…">Save changes</BusyButton>
+          </>
+        ) : (
+          <>
+            <BusyButton className="btn-secondary" onClick={remove} busyLabel="Removing…" style={{ color: "var(--danger)" }}>Remove pet</BusyButton>
+            <button className="btn-primary" onClick={() => setEditing(true)}>Edit</button>
+          </>
+        )
+      }
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+        <div className="pet-avatar-lg" style={{ fontSize: 28 }}>{pet.emoji}</div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>{pet.name}</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{pet.typeName || "Pet"}</div>
+        </div>
+      </div>
+      {!editing ? (
+        <div>
+          <Row label="Type" value={pet.typeName} />
+          <Row label="Breed" value={pet.breed} />
+          <Row label="Age" value={`${pet.age ?? 0} yr`} />
+          <div style={{ padding: "12px 0 0" }}>
+            <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginBottom: 6 }}>Health notes</div>
+            <div style={{ padding: 12, background: "var(--gray)", borderRadius: 10, fontSize: 13.5, lineHeight: 1.5, minHeight: 44 }}>{pet.notes || "No notes yet — tap Edit to add health notes."}</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <Field label="Pet name"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></Field>
+          <Field label="Pet type">
+            <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              {petTypes.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Age (years)"><input value={age} onChange={(e) => setAge(e.target.value)} type="number" min="0" max="30" /></Field>
+          <Field label="Breed"><input value={breed} onChange={(e) => setBreed(e.target.value)} maxLength={60} placeholder="e.g. Golden Retriever" /></Field>
+          <Field label="Health notes" hint="Allergies, conditions, medications…">
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} maxLength={1000} placeholder="Any health details the vet should know…" style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical" }} />
+          </Field>
+        </>
+      )}
+      {error && <div className="banner error" style={{ marginTop: 12 }}>{error}</div>}
     </Modal>
   );
 }
@@ -507,6 +591,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const [navOpen, setNavOpen] = useState(false);
   const [showEmergency, setShowEmergency] = useState(false);
   const [showAddPet, setShowAddPet] = useState(false);
+  const [openPet, setOpenPet] = useState<any>(null);
   const [showInquiry, setShowInquiry] = useState(false);
   const [openInquiry, setOpenInquiry] = useState<any>(null);
   const [openQuiz, setOpenQuiz] = useState<Quiz | null>(null);
@@ -532,6 +617,18 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     await refresh();
     setShowAddPet(false);
     push("Pet added.", "success");
+  };
+  const handleUpdatePet = async (data: any) => {
+    await petaid.updatePet(openPet.id, data);
+    await refresh();
+    setOpenPet(null);
+    push("Pet profile updated.", "success");
+  };
+  const handleDeletePet = async () => {
+    await petaid.deletePet(openPet.id);
+    await refresh();
+    setOpenPet(null);
+    push("Pet removed.", "success");
   };
   const handleNewInquiry = async (q: string, images: string[] = []) => {
     await petaid.submitInquiry(q.slice(0, 120) || "Inquiry", q, images);
@@ -608,7 +705,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     <>
       <div className="app-shell">
         <div className={`nav-backdrop ${navOpen ? "open" : ""}`} onClick={() => setNavOpen(false)} aria-hidden="true" />
-        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} />
+        <POSidebar active={active} setActive={setActive} panels={panels} account={account} onLogout={onLogout} open={navOpen} onClose={() => setNavOpen(false)} onOpenPet={setOpenPet} />
         <main className="main">
           <div className="topbar">
             <button className="nav-toggle" aria-label="Open navigation" onClick={() => setNavOpen(true)}><Icon name="menu" size={18} /></button>
@@ -622,7 +719,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
             <>
               <POHero stats={panels.stats} />
               <div className="section-title"><h2>Your pets</h2>{can(snapshot, Permission.PET_MANAGE) && <button className="btn-ghost" onClick={() => setShowAddPet(true)}><Icon name="plus" size={12} stroke={2} /> Add pet</button>}</div>
-              <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} />
+              <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} onOpen={setOpenPet} />
               <div className="section-title"><h2>Quick actions</h2></div>
               <div style={{ padding: "0 28px", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                 {[
@@ -653,7 +750,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
           {active === "pets" && (
             <>
               <div className="section-title"><h2>My pets</h2>{can(snapshot, Permission.PET_MANAGE) && <button className="btn-ink" onClick={() => setShowAddPet(true)}><Icon name="plus" size={13} stroke={2} /> Add pet</button>}</div>
-              <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} />
+              <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} onOpen={setOpenPet} />
             </>
           )}
 
@@ -763,6 +860,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
       {showEmergency && <EmergencyDrawer onClose={() => setShowEmergency(false)} guidance={panels.guidance} />}
       {showAddPet && <AddPetModal petTypes={panels.petTypes} onClose={() => setShowAddPet(false)} onSubmit={handleAddPet} />}
+      {openPet && <PetProfileModal pet={openPet} petTypes={panels.petTypes} onClose={() => setOpenPet(null)} onSave={handleUpdatePet} onDelete={handleDeletePet} />}
       {showInquiry && <NewInquiryModal onClose={() => setShowInquiry(false)} onSubmit={handleNewInquiry} />}
       {openInquiry && <InquiryDetailModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} />}
       {openQuiz && <QuizModal quiz={openQuiz} onClose={() => setOpenQuiz(null)} onSubmit={handleQuizSubmit} />}

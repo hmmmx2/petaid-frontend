@@ -393,6 +393,9 @@ export const petaid = {
   /* domain actions */
   addPet: (b: { name: string; pet_type_id: string; breed?: string; age_years?: number | null; health_notes?: string }) =>
     req("/api/v1/pets", { method: "POST", body: JSON.stringify(b) }),
+  updatePet: (id: string, b: { name?: string; pet_type_id?: string; breed?: string; age_years?: number | null; health_notes?: string }) =>
+    req(`/api/v1/pets/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
+  deletePet: (id: string) => req(`/api/v1/pets/${id}`, { method: "DELETE" }),
   submitInquiry: (subject: string, question: string, images: string[] = []) =>
     req("/api/v1/inquiries", { method: "POST", body: JSON.stringify({ subject, question, images }) }),
   respondInquiry: (id: string, response: string) =>
