@@ -5,8 +5,9 @@
    (the backend exposes no profile-setter in A3 scope). */
 import Image from "next/image";
 import { useState } from "react";
-import { Field, Icon, maskEmail, useToast } from "@/components/ui";
-import type { Account } from "@/lib/petaid";
+import { BusyButton, Field, Icon, PasswordInput, PasswordRequirements, maskEmail, useToast } from "@/components/ui";
+import { ApiError, petaid, type Account } from "@/lib/petaid";
+import { passwordOk } from "@/lib/validation";
 
 const SECTIONS = [
   { id: "profile", group: "Account", icon: "paw", label: "Edit profile" },
@@ -78,14 +79,27 @@ function SectionSecurity({ account }: { account: Account }) {
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const isVet = account.role === "vet_expert";
-  const submit = () => {
+  const submit = async () => {
     const e: Record<string, string> = {};
     if (!current) e.current = "Enter your current password.";
-    if (!next || next.length < 6) e.next = "New password must be at least 6 characters.";
+    if (!passwordOk(next)) e.next = "Your new password doesn't meet all the requirements below.";
     if (next !== confirm) e.confirm = "Passwords do not match.";
-    if (Object.keys(e).length) { setErrors(e); return; }
-    setErrors({}); setCurrent(""); setNext(""); setConfirm("");
-    push("Password updated.", "success");
+    setErrors(e);
+    if (Object.keys(e).length) return;
+    try {
+      await petaid.changePassword(current, next);
+      setErrors({}); setCurrent(""); setNext(""); setConfirm("");
+      push("Password updated.", "success");
+    } catch (err) {
+      if (err instanceof ApiError && err.field) {
+        const key = err.field === "current_password" ? "current"
+          : err.field === "new_password" || err.field === "password" ? "next"
+          : err.field;
+        setErrors({ [key]: err.message });
+      } else {
+        setErrors({ next: err instanceof Error ? err.message : "Could not update password." });
+      }
+    }
   };
   return (
     <div className="settings-content">
@@ -93,10 +107,11 @@ function SectionSecurity({ account }: { account: Account }) {
       <div className="settings-form">
         <div className="settings-card">
           <div className="settings-card-head"><div><strong>Password</strong><p>Set a strong password you don&apos;t use anywhere else.</p></div></div>
-          <Field label="Current password" error={errors.current}><input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
-          <Field label="New password" error={errors.next} hint="At least 6 characters."><input type="password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
-          <Field label="Confirm new password" error={errors.confirm}><input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
-          <button className="btn-primary" style={{ width: "auto", minWidth: 160 }} onClick={submit}>Update password</button>
+          <Field label="Current password" error={errors.current}><PasswordInput value={current} onChange={setCurrent} autoComplete="current-password" /></Field>
+          <Field label="New password" error={errors.next}><PasswordInput value={next} onChange={setNext} autoComplete="new-password" /></Field>
+          <PasswordRequirements value={next} />
+          <Field label="Confirm new password" error={errors.confirm}><PasswordInput value={confirm} onChange={setConfirm} autoComplete="new-password" /></Field>
+          <BusyButton className="btn-primary" style={{ width: "auto", minWidth: 160 }} onClick={submit} busyLabel="Updating…">Update password</BusyButton>
         </div>
         <div className="settings-card">
           <div className="settings-card-head">

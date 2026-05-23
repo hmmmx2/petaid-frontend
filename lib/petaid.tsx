@@ -417,6 +417,29 @@ export const petaid = {
     await signOut({ redirect: false });
   },
 
+  /* password recovery (public) — dev surfaces the reset code (no mail server) */
+  async forgotPassword(email: string) {
+    return rawReq<{ message: string; reset_code: string | null }>(
+      "/api/v1/auth/forgot-password",
+      { method: "POST", body: JSON.stringify({ email }) },
+      null,
+    );
+  },
+  async resetPassword(email: string, code: string, newPassword: string) {
+    return rawReq<{ message: string }>(
+      "/api/v1/auth/reset-password",
+      { method: "POST", body: JSON.stringify({ email, code, new_password: newPassword }) },
+      null,
+    );
+  },
+  /** Change the signed-in account's password (re-auths with the current one). */
+  async changePassword(currentPassword: string, newPassword: string) {
+    return req<{ message: string }>(
+      "/api/v1/auth/change-password",
+      { method: "POST", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) },
+    );
+  },
+
   /* public (guest) content — no auth */
   async guestData(): Promise<{ guidance: Guidance[]; petTypes: PetType[] }> {
     const [g, pt] = await Promise.all([

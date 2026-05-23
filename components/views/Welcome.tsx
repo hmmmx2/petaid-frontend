@@ -1,14 +1,17 @@
 "use client";
 
-/* Welcome — login / register / email verification / MFA (SRS §7.8).
-   1:1 port of views/10-auth.jsx, wired to the FastAPI backend. */
+/* Welcome — sign in / register / email verification / MFA / password recovery
+   (SRS §7.8). Wired to the FastAPI backend via the petaid controller. */
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ApiError, petaid } from "@/lib/petaid";
-import { BusyButton, Field, Icon, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, PasswordInput, PasswordRequirements, useToast } from "@/components/ui";
+import { isEmail, passwordOk } from "@/lib/validation";
 
 type Banner = { kind: "info" | "error"; text: string } | null;
-type Mode = "login" | "register" | "verify" | "mfa";
+type Mode = "login" | "register" | "verify" | "mfa" | "forgot" | "reset";
+
+const RESEND_COOLDOWN = 30; // seconds; mirrors the backend resend cooldown
 
 export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: () => void }) {
   const [mode, setMode] = useState<Mode>("login");
@@ -21,24 +24,50 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
 
   const [mfaToken, setMfaToken] = useState("");
 
-  const [reg, setReg] = useState({ role: "pet_owner" as "pet_owner" | "vet_expert", name: "", email: "", password: "" });
+  const [reg, setReg] = useState({ name: "", email: "", password: "" });
+  const [regConfirm, setRegConfirm] = useState("");
+  const [regTerms, setRegTerms] = useState(false);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
   const [pendingEmail, setPendingEmail] = useState("");
+  const [pendingPassword, setPendingPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
-  const [hintCode, setHintCode] = useState("");
   const [verifyErrors, setVerifyErrors] = useState<Record<string, string>>({});
+  const [resendIn, setResendIn] = useState(0);
+
+  // Password recovery
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotErrors, setForgotErrors] = useState<Record<string, string>>({});
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetPw, setResetPw] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetErrors, setResetErrors] = useState<Record<string, string>>({});
+
+  // Tick the resend cooldown down to zero.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   const fieldErr = (e: unknown): Record<string, string> => {
     if (e instanceof ApiError && e.field) return { [e.field]: e.message };
     return {};
   };
+  const errText = (e: unknown, fallback: string) =>
+    e instanceof Error ? e.message : fallback;
 
+  /* ------------------------------------------------------------------ login */
   async function submitLogin(mfa?: string) {
     setBanner(null);
-    setLoginErrors({});
-    // `login()` resolves with a reliable { ok, code } (success is confirmed by
-    // an established session, not by signIn's flaky return flags).
+    const errs: Record<string, string> = {};
+    if (!loginEmail.trim()) errs.email = "Email is required.";
+    else if (!isEmail(loginEmail)) errs.email = "Enter a valid email address.";
+    if (!loginPassword) errs.password = "Password is required.";
+    setLoginErrors(errs);
+    if (Object.keys(errs).length) return;
+
     const r = await petaid.login(loginEmail, loginPassword, mfa);
     if (r.ok) {
       push(`Welcome back, ${loginEmail.split("@")[0]}.`, "success");
@@ -66,16 +95,25 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
     }
   }
 
+  /* --------------------------------------------------------------- register */
   async function submitRegister() {
     setBanner(null);
-    setRegErrors({});
+    const errs: Record<string, string> = {};
+    if (!reg.name.trim()) errs.full_name = "Full name is required.";
+    if (!reg.email.trim()) errs.email = "Email is required.";
+    else if (!isEmail(reg.email)) errs.email = "Enter a valid email address.";
+    if (!passwordOk(reg.password)) errs.password = "Your password doesn't meet all the requirements below.";
+    if (reg.password !== regConfirm) errs.confirm = "Passwords do not match.";
+    if (!regTerms) errs.terms = "Please accept the Terms and Privacy Policy to continue.";
+    setRegErrors(errs);
+    if (Object.keys(errs).length) return;
+
     try {
-      const res = await petaid.register({ name: reg.name, email: reg.email, password: reg.password, role: reg.role });
+      const res = await petaid.register({ name: reg.name, email: reg.email, password: reg.password, role: "pet_owner" });
       setPendingEmail(reg.email);
-      setHintCode(res.verification_code || "");
+      setPendingPassword(reg.password);
       setMode("verify");
-      // The code is only returned in non-production builds (no mail server in
-      // dev). In production it arrives by email and is never shown here.
+      setResendIn(RESEND_COOLDOWN);
       setBanner(
         res.verification_code
           ? { kind: "info", text: `Dev only — your verification code is ${res.verification_code}` }
@@ -83,36 +121,39 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       );
     } catch (e) {
       if (e instanceof ApiError && e.code === "invalid_input") setRegErrors(fieldErr(e));
-      else setBanner({ kind: "error", text: e instanceof Error ? e.message : "Could not create account." });
+      else setBanner({ kind: "error", text: errText(e, "Could not create account.") });
     }
   }
 
+  /* ----------------------------------------------------------- verify email */
   async function resendCode() {
+    if (resendIn > 0) return;
     setVerifyErrors({});
     try {
       const res = await petaid.resendVerification(pendingEmail);
-      setHintCode(res.verification_code || "");
+      setResendIn(RESEND_COOLDOWN);
       setBanner(
         res.verification_code
           ? { kind: "info", text: `Dev only — your new verification code is ${res.verification_code}` }
           : { kind: "info", text: "If your email is unverified, a new code is on its way." },
       );
     } catch (e) {
-      setBanner({ kind: "error", text: e instanceof Error ? e.message : "Could not resend the code." });
+      setBanner({ kind: "error", text: errText(e, "Could not resend the code.") });
     }
   }
 
   async function submitVerification() {
     setVerifyErrors({});
+    if (verificationCode.length < 6) { setVerifyErrors({ code: "Enter the 6-digit code." }); return; }
     try {
       await petaid.confirmEmail(pendingEmail, verificationCode);
     } catch (e) {
       if (e instanceof ApiError && e.code === "invalid_input") setVerifyErrors(fieldErr(e));
-      else setBanner({ kind: "error", text: e instanceof Error ? e.message : "Verification failed." });
+      else setBanner({ kind: "error", text: errText(e, "Verification failed.") });
       return;
     }
-    // Email confirmed → establish the Auth.js session with the same password.
-    const r = await petaid.login(pendingEmail, reg.password);
+    // Email confirmed → establish the session with the same password.
+    const r = await petaid.login(pendingEmail, pendingPassword);
     if (r.ok) {
       push("Email verified — welcome to PetAid.", "success");
       onAuthed();
@@ -122,6 +163,53 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       setBanner({ kind: "info", text: "Email verified. Please sign in." });
     }
   }
+
+  /* ------------------------------------------------------- password recovery */
+  async function submitForgot() {
+    setBanner(null);
+    const errs: Record<string, string> = {};
+    if (!forgotEmail.trim()) errs.email = "Email is required.";
+    else if (!isEmail(forgotEmail)) errs.email = "Enter a valid email address.";
+    setForgotErrors(errs);
+    if (Object.keys(errs).length) return;
+    try {
+      const res = await petaid.forgotPassword(forgotEmail);
+      setResetEmail(forgotEmail);
+      setResetCode("");
+      setResetPw("");
+      setResetConfirm("");
+      setMode("reset");
+      setBanner(
+        res.reset_code
+          ? { kind: "info", text: `Dev only — your reset code is ${res.reset_code}` }
+          : { kind: "info", text: "If that email matches a verified account, a reset code is on its way." },
+      );
+    } catch (e) {
+      setBanner({ kind: "error", text: errText(e, "Could not start password reset.") });
+    }
+  }
+
+  async function submitReset() {
+    setBanner(null);
+    const errs: Record<string, string> = {};
+    if (!resetCode.trim()) errs.code = "Enter the reset code.";
+    if (!passwordOk(resetPw)) errs.new_password = "Your password doesn't meet all the requirements below.";
+    if (resetPw !== resetConfirm) errs.confirm = "Passwords do not match.";
+    setResetErrors(errs);
+    if (Object.keys(errs).length) return;
+    try {
+      await petaid.resetPassword(resetEmail, resetCode, resetPw);
+      setMode("login");
+      setLoginEmail(resetEmail);
+      setLoginPassword("");
+      setBanner({ kind: "info", text: "Your password has been reset. Please sign in with your new password." });
+    } catch (e) {
+      if (e instanceof ApiError && e.field) setResetErrors(fieldErr(e));
+      else setBanner({ kind: "error", text: errText(e, "Could not reset your password.") });
+    }
+  }
+
+  const codeInputStyle = { fontFamily: "var(--font-mono)", letterSpacing: "0.3em", textAlign: "center" as const, fontSize: 18 };
 
   return (
     <div className="auth-stage">
@@ -153,7 +241,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
             </button>
           )}
 
-          {mode !== "verify" && mode !== "mfa" && (
+          {(mode === "login" || mode === "register") && (
             <div className="tabs" role="tablist">
               <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
                 Sign in
@@ -164,18 +252,23 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
             </div>
           )}
 
-          {banner && <div className={`banner ${banner.kind}`}>{banner.text}</div>}
+          {banner && <div className={`banner ${banner.kind}`} role="status">{banner.text}</div>}
 
           {mode === "login" && (
             <>
               <h1>Welcome back</h1>
               <p className="sub">Sign in to access your PetAid dashboard.</p>
               <Field label="Email" error={loginErrors.email}>
-                <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" />
+                <input value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" autoFocus />
               </Field>
               <Field label="Password" error={loginErrors.password}>
-                <input value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} type="password" placeholder="••••••••" autoComplete="current-password" onKeyDown={(e) => e.key === "Enter" && submitLogin()} />
+                <PasswordInput value={loginPassword} onChange={setLoginPassword} autoComplete="current-password" onKeyDown={(e) => e.key === "Enter" && submitLogin()} />
               </Field>
+              <div className="auth-row-end">
+                <button type="button" className="btn-link" onClick={() => { setForgotEmail(loginEmail); setForgotErrors({}); setBanner(null); setMode("forgot"); }}>
+                  Forgot password?
+                </button>
+              </div>
               <BusyButton className="btn-primary" onClick={() => submitLogin()} busyLabel="Signing in…">Sign in</BusyButton>
 
               <div className="demo-block" style={{ background: "transparent", border: "1px dashed var(--line-2)", padding: 18, marginTop: 22 }}>
@@ -202,13 +295,23 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
                 .
               </p>
               <Field label="Full name" error={regErrors.full_name}>
-                <input value={reg.name} onChange={(e) => setReg({ ...reg, name: e.target.value })} placeholder="e.g. Alwin Tay" />
+                <input value={reg.name} onChange={(e) => setReg({ ...reg, name: e.target.value })} placeholder="e.g. Alwin Tay" autoComplete="name" maxLength={80} autoFocus />
               </Field>
               <Field label="Email" error={regErrors.email}>
-                <input value={reg.email} onChange={(e) => setReg({ ...reg, email: e.target.value })} type="email" placeholder="you@example.com" />
+                <input value={reg.email} onChange={(e) => setReg({ ...reg, email: e.target.value })} type="email" placeholder="you@example.com" autoComplete="email" />
               </Field>
-              <Field label="Password" error={regErrors.password} hint="At least 6 characters.">
-                <input value={reg.password} onChange={(e) => setReg({ ...reg, password: e.target.value })} type="password" placeholder="••••••••" />
+              <Field label="Password" error={regErrors.password}>
+                <PasswordInput value={reg.password} onChange={(v) => setReg({ ...reg, password: v })} autoComplete="new-password" />
+              </Field>
+              <PasswordRequirements value={reg.password} />
+              <Field label="Confirm password" error={regErrors.confirm}>
+                <PasswordInput value={regConfirm} onChange={setRegConfirm} autoComplete="new-password" />
+              </Field>
+              <Field error={regErrors.terms}>
+                <label className="auth-check">
+                  <input type="checkbox" checked={regTerms} onChange={(e) => setRegTerms(e.target.checked)} />
+                  <span>I agree to the <strong>Terms of Service</strong> and <strong>Privacy Policy</strong>.</span>
+                </label>
               </Field>
               <BusyButton className="btn-primary" onClick={submitRegister} busyLabel="Creating…">Create account</BusyButton>
             </>
@@ -225,18 +328,20 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
                 <input
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && submitVerification()}
                   placeholder="••••••"
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.3em", textAlign: "center", fontSize: 18 }}
+                  style={codeInputStyle}
+                  autoFocus
                 />
               </Field>
               <BusyButton className="btn-primary" onClick={submitVerification} busyLabel="Verifying…">Verify &amp; continue</BusyButton>
               <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => setMode("register")}>
                 ← Back to form
               </button>
-              <button className="btn-link" style={{ marginTop: 14, display: "block" }} onClick={resendCode}>
-                Didn&apos;t receive a code? Resend
+              <button className="btn-link" style={{ marginTop: 14, display: "block" }} onClick={resendCode} disabled={resendIn > 0}>
+                {resendIn > 0 ? `Resend code in ${resendIn}s` : "Didn't receive a code? Resend"}
               </button>
             </>
           )}
@@ -252,12 +357,59 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
                   placeholder="••••••"
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.3em", textAlign: "center", fontSize: 18 }}
+                  style={codeInputStyle}
                   onKeyDown={(e) => e.key === "Enter" && submitMfa()}
+                  autoFocus
                 />
               </Field>
               <BusyButton className="btn-primary" onClick={submitMfa} busyLabel="Verifying…">Verify &amp; sign in</BusyButton>
               <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setMfaToken(""); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {mode === "forgot" && (
+            <>
+              <h1>Reset your password</h1>
+              <p className="sub">Enter your account email and we&apos;ll send you a reset code.</p>
+              <Field label="Email" error={forgotErrors.email}>
+                <input value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" onKeyDown={(e) => e.key === "Enter" && submitForgot()} autoFocus />
+              </Field>
+              <BusyButton className="btn-primary" onClick={submitForgot} busyLabel="Sending…">Send reset code</BusyButton>
+              <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setBanner(null); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
+
+          {mode === "reset" && (
+            <>
+              <h1>Choose a new password</h1>
+              <p className="sub">Enter the code sent to <strong>{resetEmail}</strong> and your new password.</p>
+              <Field label="Reset code" error={resetErrors.code}>
+                <input
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="••••••"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  style={codeInputStyle}
+                  autoFocus
+                />
+              </Field>
+              <Field label="New password" error={resetErrors.new_password || resetErrors.password}>
+                <PasswordInput value={resetPw} onChange={setResetPw} autoComplete="new-password" />
+              </Field>
+              <PasswordRequirements value={resetPw} />
+              <Field label="Confirm new password" error={resetErrors.confirm}>
+                <PasswordInput value={resetConfirm} onChange={setResetConfirm} autoComplete="new-password" />
+              </Field>
+              <BusyButton className="btn-primary" onClick={submitReset} busyLabel="Resetting…">Reset password</BusyButton>
+              <button className="btn-link" style={{ marginTop: 14, display: "block" }} onClick={() => setMode("forgot")}>
+                Use a different email
+              </button>
+              <button className="btn-secondary" style={{ marginTop: 8 }} onClick={() => { setMode("login"); setBanner(null); }}>
                 ← Back to sign in
               </button>
             </>

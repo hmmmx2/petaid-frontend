@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { passwordChecks, PASSWORD_RULES } from "@/lib/validation";
 
 /* ---------- Icons ---------- */
 const ICONS: Record<string, ReactNode> = {
@@ -48,6 +49,9 @@ const ICONS: Record<string, ReactNode> = {
   edit: (<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z" /></>),
   chevron: (<><path d="m9 18 6-6-6-6" /></>),
   refresh: (<><path d="M21 12a9 9 0 1 1-3.51-7.13L21 8M21 3v5h-5" /></>),
+  eye: (<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>),
+  eye_off: (<><path d="M9.9 4.24A9.12 9.12 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-1.67 2.68" /><path d="M6.06 6.06A13.2 13.2 0 0 0 2 12s3.5 7 10 7a9.12 9.12 0 0 0 3.94-.88" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><path d="m2 2 20 20" /></>),
+  lock: (<><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>),
 };
 
 export const Icon = ({
@@ -299,9 +303,77 @@ export const Field = ({
     {label && <label>{label}</label>}
     {children}
     {hint && !error && <span className="hint">{hint}</span>}
-    {error && <span className="err">{error}</span>}
+    {error && <span className="err" role="alert">{error}</span>}
   </div>
 );
+
+/* ---------- PasswordInput ----------
+   Text/password input with a show/hide eye toggle and a Caps-Lock hint. Reused
+   by sign-in, registration, password reset and the Settings change-password
+   form so the behaviour is identical everywhere. */
+export function PasswordInput({
+  value,
+  onChange,
+  placeholder = "••••••••",
+  autoComplete = "current-password",
+  name,
+  onKeyDown,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+  name?: string;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const [caps, setCaps] = useState(false);
+  const trackCaps = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (typeof e.getModifierState === "function") setCaps(e.getModifierState("CapsLock"));
+  };
+  return (
+    <div className="pw-input">
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        name={name}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { trackCaps(e); onKeyDown?.(e); }}
+        onKeyUp={trackCaps}
+        onBlur={() => setCaps(false)}
+      />
+      <button
+        type="button"
+        className="pw-toggle"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? "Hide password" : "Show password"}
+        tabIndex={-1}
+      >
+        <Icon name={show ? "eye_off" : "eye"} size={16} />
+      </button>
+      {caps && <span className="pw-caps" role="status">⇪ Caps Lock is on</span>}
+    </div>
+  );
+}
+
+/* ---------- PasswordRequirements ----------
+   Live ✓/○ checklist of the password policy (mirrors the backend rules in
+   lib/validation). Pass the current password value. */
+export function PasswordRequirements({ value }: { value: string }) {
+  const c = passwordChecks(value);
+  return (
+    <ul className="pw-reqs" aria-label="Password requirements">
+      {PASSWORD_RULES.map((r) => (
+        <li key={r.key} className={c[r.key] ? "ok" : ""}>
+          <span className="pw-req-mark" aria-hidden="true">{c[r.key] ? "✓" : "○"}</span>
+          {r.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export const StarRow = ({ value, onChange }: { value: number; onChange: (n: number) => void }) => (
   <div className="star-row">

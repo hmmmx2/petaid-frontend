@@ -122,6 +122,72 @@ a { color: inherit; text-decoration: none; }
   transition: color 0.15s ease, background 0.15s ease;
 }
 .auth-back:hover { color: var(--ink); background: var(--gray); }
+
+/* ----- auth: forgot link, terms checkbox, password input, requirements ----- */
+.auth-row-end { display: flex; justify-content: flex-end; margin: -6px 0 14px; }
+.auth-row-end .btn-link { font-size: 12.5px; }
+.auth-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  line-height: 1.45;
+  cursor: pointer;
+}
+.auth-check input { width: 16px; height: 16px; margin-top: 1px; flex-shrink: 0; accent-color: var(--accent); }
+.auth-check strong { color: var(--ink); font-weight: 600; }
+
+.pw-input { position: relative; }
+.pw-input input { width: 100%; padding-right: 42px; }
+.pw-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--ink-3);
+  background: transparent;
+}
+.pw-toggle:hover { color: var(--ink); background: var(--gray); }
+.pw-caps {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--accent-deep);
+}
+
+.pw-reqs {
+  list-style: none;
+  margin: -6px 0 14px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 14px;
+}
+.pw-reqs li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-3);
+  transition: color 0.15s ease;
+}
+.pw-reqs li.ok { color: var(--success); }
+.pw-req-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  font-size: 11px;
+  font-weight: 700;
+}
+@media (max-width: 480px) { .pw-reqs { grid-template-columns: 1fr; } }
 .auth-form h1 {
   font-size: 32px;
   font-weight: 600;
