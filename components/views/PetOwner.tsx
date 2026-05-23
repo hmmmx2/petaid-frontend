@@ -50,7 +50,7 @@ function POSidebar({ active, setActive, panels, account, onLogout, open, onClose
         <div className="nav">
           {panels.pets.map((p: any) => (
             <div className="member" key={p.id} {...clickable(() => { onOpenPet?.(p); onClose?.(); })} title={`View ${p.name}'s profile`}>
-              <div className="member-avatar">{p.emoji}</div>
+              <PetAvatar pet={p} className="member-avatar" />
               <div className="member-info">
                 <div className="member-name">{p.name}</div>
                 <div className="member-role">{p.breed || "Pet"} · {p.age} yr</div>
@@ -122,12 +122,49 @@ function POHero({ stats }: { stats: PetOwnerPanels["stats"] }) {
 }
 
 /* ---------- Pets ---------- */
+/** Pet avatar — uploaded photo if present, otherwise the pet-type emoji. */
+function PetAvatar({ pet, className = "pet-avatar-lg" }: { pet: any; className?: string }) {
+  if (pet.image) {
+    return (
+      <div className={className} style={{ overflow: "hidden", padding: 0 }}>
+        <img src={pet.image} alt={pet.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+    );
+  }
+  return <div className={className}>{pet.emoji}</div>;
+}
+
+/** Reusable photo picker — downscales the chosen file to a JPEG data URL. */
+function PetPhotoPicker({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+  const [reading, setReading] = useState(false);
+  const ref = useRef<HTMLInputElement>(null);
+  const pick = async (files: FileList | null) => {
+    if (!files || !files[0]) return;
+    setReading(true);
+    try { onChange(await fileToDownscaledDataUrl(files[0], 640, 0.8)); }
+    catch { /* ignore unreadable files */ }
+    finally { setReading(false); if (ref.current) ref.current.value = ""; }
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pick(e.target.files)} />
+      <div style={{ width: 64, height: 64, borderRadius: 12, overflow: "hidden", background: "var(--cream)", display: "grid", placeItems: "center", border: "1px solid var(--line)", flexShrink: 0 }}>
+        {value ? <img src={value} alt="Pet" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon name="paw" size={22} />}
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="btn-secondary" onClick={() => ref.current?.click()} disabled={reading}>{reading ? "Reading…" : value ? "Change photo" : "Upload photo"}</button>
+        {value && <button type="button" className="btn-ghost" onClick={() => onChange(null)}>Remove</button>}
+      </div>
+    </div>
+  );
+}
+
 function PetsRow({ pets, onAdd, onOpen }: any) {
   return (
     <div className="pets-row">
       {pets.map((p: any) => (
         <div className="pet-card" key={p.id} {...clickable(() => onOpen?.(p))} title={`View ${p.name}'s profile`}>
-          <div className="pet-avatar-lg">{p.emoji}</div>
+          <PetAvatar pet={p} />
           <div className="pet-info">
             <div className="pet-name-lg">{p.name}</div>
             <div className="pet-meta-lg">{p.breed || "—"} · {p.age} yr</div>
@@ -148,11 +185,12 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
   const [typeId, setTypeId] = useState(petTypes[0]?.id || "");
   const [breed, setBreed] = useState("");
   const [age, setAge] = useState("1");
+  const [image, setImage] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const submit = async () => {
     setErrors({});
     try {
-      await onSubmit({ name, typeId, breed, age: Number(age) });
+      await onSubmit({ name, typeId, breed, age: Number(age), image_url: image });
     } catch (e) {
       if (e instanceof ApiError && e.field) setErrors({ [e.field]: e.message });
       else setErrors({ form: e instanceof Error ? e.message : "Failed" });
@@ -161,6 +199,9 @@ function AddPetModal({ petTypes, onClose, onSubmit }: any) {
   return (
     <Modal title="Add a pet" subtitle="Pet Type drives which guidance and quizzes you see." onClose={onClose}
       footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Adding…">Add pet</BusyButton></>}>
+      <Field label="Photo (optional)">
+        <PetPhotoPicker value={image} onChange={setImage} />
+      </Field>
       <Field label="Pet name" error={errors.name}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mochi" maxLength={60} />
       </Field>
@@ -187,12 +228,13 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
   const [breed, setBreed] = useState(pet.breed || "");
   const [age, setAge] = useState(String(pet.age ?? 0));
   const [notes, setNotes] = useState(pet.notes || "");
+  const [image, setImage] = useState<string | null>(pet.image || null);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
     setError(null);
     if (!name.trim()) { setError("Name is required."); return; }
     try {
-      await onSave({ name: name.trim(), pet_type_id: typeId, breed: breed.trim(), age_years: Number(age) || 0, health_notes: notes });
+      await onSave({ name: name.trim(), pet_type_id: typeId, breed: breed.trim(), age_years: Number(age) || 0, health_notes: notes, image_url: image });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Couldn't save.");
     }
@@ -228,7 +270,7 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
       }
     >
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-        <div className="pet-avatar-lg" style={{ fontSize: 28 }}>{pet.emoji}</div>
+        <PetAvatar pet={pet} />
         <div>
           <div style={{ fontSize: 18, fontWeight: 600 }}>{pet.name}</div>
           <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{pet.typeName || "Pet"}</div>
@@ -246,6 +288,7 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
         </div>
       ) : (
         <>
+          <Field label="Photo"><PetPhotoPicker value={image} onChange={setImage} /></Field>
           <Field label="Pet name"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} /></Field>
           <Field label="Pet type">
             <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -613,7 +656,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
   /* handlers */
   const handleAddPet = async (d: any) => {
-    await petaid.addPet({ name: d.name, pet_type_id: d.typeId, breed: d.breed, age_years: d.age, health_notes: "" });
+    await petaid.addPet({ name: d.name, pet_type_id: d.typeId, breed: d.breed, age_years: d.age, health_notes: "", image_url: d.image_url });
     await refresh();
     setShowAddPet(false);
     push("Pet added.", "success");

@@ -85,7 +85,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /* ----------------------------------------------------------- API shapes */
 type ApiPetType = { id: string; name: string; description: string; icon_emoji: string; icon_bg: string };
-type ApiPet = { id: string; name: string; breed: string | null; age_years: number | null; health_notes: string; pet_type: ApiPetType };
+type ApiPet = { id: string; name: string; breed: string | null; age_years: number | null; health_notes: string; image_url?: string | null; pet_type: ApiPetType };
 type ApiResource = { id: string; title: string; content_type: string; status: string; media_path: string | null; pet_type: ApiPetType };
 type ApiGuidance = { id: string; title: string; emergency_type: string; summary: string; steps: string[]; pet_type: ApiPetType; resources: ApiResource[] };
 type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
@@ -106,7 +106,7 @@ export type Account = {
   speciality?: string; clinic?: string;
 };
 export type PetType = { id: string; name: string; emoji: string; bg: string };
-export type Pet = { id: string; name: string; breed: string; age: number; emoji: string; bg: string; typeId: string; typeName: string; notes: string };
+export type Pet = { id: string; name: string; breed: string; age: number; emoji: string; bg: string; typeId: string; typeName: string; notes: string; image: string | null };
 export type Guidance = { id: string; title: string; emergencyType: string; steps: string[]; summary: string; petTypeIds: string[]; petTypeNames: string[]; resourceCount: number };
 export type Resource = { id: string; title: string; contentType: string; status: string; petTypeIds: string[]; petTypeName: string };
 export type QuizQuestion = { prompt: string; choices: string[] };
@@ -198,6 +198,7 @@ const mapPet = (p: ApiPet): Pet => ({
   id: p.id, name: p.name, breed: p.breed || "", age: p.age_years || 0,
   emoji: p.pet_type?.icon_emoji || "🐾", bg: p.pet_type?.icon_bg || "#F4F4F4",
   typeId: p.pet_type?.id, typeName: p.pet_type?.name || "", notes: p.health_notes || "",
+  image: p.image_url || null,
 });
 const mapGuidance = (g: ApiGuidance): Guidance => ({
   id: g.id, title: g.title, emergencyType: g.emergency_type, steps: g.steps, summary: g.summary,
@@ -391,9 +392,9 @@ export const petaid = {
   },
 
   /* domain actions */
-  addPet: (b: { name: string; pet_type_id: string; breed?: string; age_years?: number | null; health_notes?: string }) =>
+  addPet: (b: { name: string; pet_type_id: string; breed?: string; age_years?: number | null; health_notes?: string; image_url?: string | null }) =>
     req("/api/v1/pets", { method: "POST", body: JSON.stringify(b) }),
-  updatePet: (id: string, b: { name?: string; pet_type_id?: string; breed?: string; age_years?: number | null; health_notes?: string }) =>
+  updatePet: (id: string, b: { name?: string; pet_type_id?: string; breed?: string; age_years?: number | null; health_notes?: string; image_url?: string | null }) =>
     req(`/api/v1/pets/${id}`, { method: "PATCH", body: JSON.stringify(b) }),
   deletePet: (id: string) => req(`/api/v1/pets/${id}`, { method: "DELETE" }),
   submitInquiry: (subject: string, question: string, images: string[] = []) =>
