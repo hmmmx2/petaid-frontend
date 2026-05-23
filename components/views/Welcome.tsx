@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { ApiError, petaid } from "@/lib/petaid";
-import { BusyButton, Field, useToast } from "@/components/ui";
+import { BusyButton, Field, Icon, useToast } from "@/components/ui";
 
 type Banner = { kind: "info" | "error"; text: string } | null;
 type Mode = "login" | "register" | "verify" | "mfa";
@@ -153,6 +153,13 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       {/* RIGHT: form */}
       <div className="auth-pane">
         <div className="auth-form">
+          {(mode === "login" || mode === "register") && (
+            <button type="button" className="auth-back" onClick={onGuest} aria-label="Back to the home page">
+              <Icon name="arrow_left" size={15} stroke={1.9} />
+              Back to home
+            </button>
+          )}
+
           {mode !== "verify" && mode !== "mfa" && (
             <div className="tabs" role="tablist">
               <button className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>
