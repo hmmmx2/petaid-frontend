@@ -322,11 +322,13 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                     <div className="kpi-label">Published content<div className="kpi-icon cream"><Icon name="book" size={14} /></div></div>
                     <div className="kpi-value">{publishedRes}<span className="unit">live</span></div>
                     <div className="kpi-sub"><span className="kpi-delta">+2 this month</span>{panels.resources.length - publishedRes} drafts</div>
+                    <KpiSparkline color="#b8860b" values={[1, 2, 2, 3, 3, 4, 4, 4, 5, 5]} />
                   </div>
                   <div className="admin-kpi">
                     <div className="kpi-label">Donations MTD<div className="kpi-icon"><Icon name="gift" size={14} /></div></div>
                     <div className="kpi-value">{platformDonationTotal.toFixed(0)}<span className="unit">{PLATFORM_CURRENCY}</span></div>
                     <div className="kpi-sub"><span className="kpi-delta">{panels.donations.length} contributions</span>Total verified</div>
+                    <KpiSparkline color="var(--accent)" values={[20, 45, 55, 60, 75, 85, 95, 105, 112, 115]} />
                   </div>
                 </div>
 

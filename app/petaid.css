@@ -1272,7 +1272,19 @@ html.reduce-motion *::after {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 16px;
-  align-items: start;
+  /* Equal-height panels with aligned bottoms — the chart panel centers its
+     content and the activity feed scrolls internally rather than stretching
+     the row, so the two cards line up instead of one running far longer. */
+  align-items: stretch;
+}
+.admin-grid-2 > .admin-panel:first-child .admin-panel-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.admin-activity {
+  max-height: 340px;
+  overflow-y: auto;
 }
 
 /* === PANEL (white card with header) === */
