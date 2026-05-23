@@ -4,7 +4,7 @@
    Covers SRS §7.2 (respond), §7.3 (publish resource), §7.6 (chat). */
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
+import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
 import { BusyButton, Field, Icon, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
@@ -298,7 +298,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
             <div className="crumbs"><span>Admin</span><span className="chev">›</span><strong>{sectionTitle[active]}</strong></div>
             <div className="grow" />
             <span className="live-pill">On duty</span>
-            {active === "resources" && <button className="btn-ink" onClick={() => setShowNewResource(true)} style={{ padding: "8px 14px", borderRadius: 9, fontSize: 13, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7, color: "white" }}><Icon name="plus" size={13} stroke={2} /> New resource</button>}
+            {active === "resources" && can(snapshot, Permission.RESOURCE_MANAGE) && <button className="btn-ink" onClick={() => setShowNewResource(true)} style={{ padding: "8px 14px", borderRadius: 9, fontSize: 13, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7, color: "white" }}><Icon name="plus" size={13} stroke={2} /> New resource</button>}
             <TopbarActions snapshot={snapshot} onAction={onAction} onSignOut={onLogout} />
           </div>
 
@@ -406,7 +406,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
 
             {active === "resources" && (
               <div className="admin-panel">
-                <div className="admin-panel-head"><div><h2>Resource library</h2><div className="sub">{publishedRes} published · {panels.resources.length - publishedRes} drafts</div></div><button className="btn-ink" onClick={() => setShowNewResource(true)} style={{ padding: "8px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7, color: "white" }}><Icon name="plus" size={13} stroke={2} /> New resource</button></div>
+                <div className="admin-panel-head"><div><h2>Resource library</h2><div className="sub">{publishedRes} published · {panels.resources.length - publishedRes} drafts</div></div>{can(snapshot, Permission.RESOURCE_MANAGE) && <button className="btn-ink" onClick={() => setShowNewResource(true)} style={{ padding: "8px 14px", borderRadius: 9, fontSize: 12.5, fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 7, color: "white" }}><Icon name="plus" size={13} stroke={2} /> New resource</button>}</div>
                 <div className="admin-panel-body" style={{ padding: 0 }}>
                   <div className="admin-table-wrap">
                     <table className="admin-table">

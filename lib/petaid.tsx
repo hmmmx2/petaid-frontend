@@ -97,7 +97,7 @@ type ApiChat = { id: string; subject: string; status: string; started_at: string
 type ApiDonation = { id: string; amount_cents: number; currency: string; status: string; transaction_ref: string | null; processed_at: string | null };
 type ApiFeedback = { id: string; target_type: string; target_id: string; flagged: boolean; rating: number; comment: string; created_at: string };
 type ApiUser = { id: string; full_name: string; initials: string; role: string; display_name: string; pets_count: number; quizzes_count: number; chats_count: number };
-type ApiDashboard = { user: ApiUser; role: string; panels: any };
+type ApiDashboard = { user: ApiUser; role: string; panels: any; permissions?: string[] };
 
 /* ----------------------------------------------------------- normalised */
 export type Role = "pet_owner" | "vet_expert";
@@ -144,7 +144,42 @@ export type Dashboard = {
   panels: PetOwnerPanels | VetPanels;
   actions: string[];
 };
-export type Snapshot = { account: Account | null; role: Role | null; dashboard: Dashboard | null };
+export type Snapshot = { account: Account | null; role: Role | null; dashboard: Dashboard | null; permissions: string[] };
+
+/* ----------------------------------------------------------- RBAC (client)
+ * The grant list is the server's (`/dashboard` → `permissions`), so the UI
+ * never drifts from the backend matrix. `Permission` mirrors the backend enum
+ * values for type-safety only; it does not decide grants. */
+export const Permission = {
+  DASHBOARD_VIEW: "dashboard:view",
+  PET_MANAGE: "pet:manage",
+  PET_TYPE_MANAGE: "pet_type:manage",
+  RESOURCE_VIEW: "resource:view",
+  RESOURCE_MANAGE: "resource:manage",
+  GUIDANCE_AUTHOR: "guidance:author",
+  QUIZ_VIEW: "quiz:view",
+  QUIZ_TAKE: "quiz:take",
+  QUIZ_AUTHOR: "quiz:author",
+  INQUIRY_VIEW: "inquiry:view",
+  INQUIRY_CREATE: "inquiry:create",
+  INQUIRY_RESPOND: "inquiry:respond",
+  INQUIRY_CLOSE: "inquiry:close",
+  CHAT_VIEW: "chat:view",
+  CHAT_INITIATE: "chat:initiate",
+  CHAT_JOIN: "chat:join",
+  CHAT_PARTICIPATE: "chat:participate",
+  DONATION_VIEW: "donation:view",
+  DONATION_CREATE: "donation:create",
+  FEEDBACK_SUBMIT: "feedback:submit",
+  FEEDBACK_REVIEW: "feedback:review",
+  MFA_ENROLL: "mfa:enroll",
+} as const;
+export type PermissionValue = (typeof Permission)[keyof typeof Permission];
+
+/** True if the snapshot's actor was granted `perm` by the backend. */
+export function can(snapshot: Snapshot | null, perm: PermissionValue): boolean {
+  return !!snapshot && snapshot.permissions.includes(perm);
+}
 
 /* ----------------------------------------------------------- currency */
 /** Single source of truth for the platform currency. The donation form
@@ -234,6 +269,7 @@ async function loadPetOwnerSnapshot(user: ApiUser, stats: any): Promise<Snapshot
   return {
     account: { id: user.id, name: user.full_name, initials: user.initials, role: "pet_owner" },
     role: "pet_owner",
+    permissions: [],
     dashboard: {
       header: {
         role: "Pet Owner",
@@ -272,6 +308,7 @@ async function loadVetSnapshot(user: ApiUser): Promise<Snapshot> {
   return {
     account: { id: user.id, name: user.full_name, initials: user.initials, role: "vet_expert" },
     role: "vet_expert",
+    permissions: [],
     dashboard: {
       header: {
         role: "Veterinary Expert",
@@ -285,11 +322,15 @@ async function loadVetSnapshot(user: ApiUser): Promise<Snapshot> {
 }
 
 export async function loadSnapshot(): Promise<Snapshot> {
-  if (!_accessToken) return { account: null, role: null, dashboard: null };
+  if (!_accessToken) return { account: null, role: null, dashboard: null, permissions: [] };
   const dash = await req<ApiDashboard>("/api/v1/dashboard");
-  return normRole(dash.role) === "vet_expert"
-    ? loadVetSnapshot(dash.user)
-    : loadPetOwnerSnapshot(dash.user, dash.panels?.stats);
+  const snapshot =
+    normRole(dash.role) === "vet_expert"
+      ? await loadVetSnapshot(dash.user)
+      : await loadPetOwnerSnapshot(dash.user, dash.panels?.stats);
+  // Carry the server-issued RBAC grants so the UI can gate from one source.
+  snapshot.permissions = dash.permissions ?? [];
+  return snapshot;
 }
 
 /* auth + actions */
@@ -401,7 +442,7 @@ export function PetAidProvider({ children }: { children: ReactNode }) {
       setSnap(await loadSnapshot());
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        setSnap({ account: null, role: null, dashboard: null });
+        setSnap({ account: null, role: null, dashboard: null, permissions: [] });
       } else {
         throw e;
       }
@@ -433,4 +474,10 @@ export function usePetAid() {
   const ctx = useContext(PetAidContext);
   if (!ctx) throw new Error("usePetAid must be used within PetAidProvider");
   return ctx;
+}
+
+/** Hook returning a `can(permission)` checker bound to the current snapshot. */
+export function useCan() {
+  const { snapshot } = usePetAid();
+  return (perm: PermissionValue) => can(snapshot, perm);
 }

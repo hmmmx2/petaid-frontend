@@ -4,7 +4,7 @@
    Covers SRS §7.1/7.2/7.4/7.5/7.6/7.7. */
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { ApiError, petaid, usePetAid, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
+import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
 import { BusyButton, Field, Icon, Modal, StarRow, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
@@ -550,16 +550,16 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
           {active === "dashboard" && (
             <>
               <POHero stats={panels.stats} />
-              <div className="section-title"><h2>Your pets</h2><button className="btn-ghost" onClick={() => setShowAddPet(true)}><Icon name="plus" size={12} stroke={2} /> Add pet</button></div>
+              <div className="section-title"><h2>Your pets</h2>{can(snapshot, Permission.PET_MANAGE) && <button className="btn-ghost" onClick={() => setShowAddPet(true)}><Icon name="plus" size={12} stroke={2} /> Add pet</button>}</div>
               <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} />
               <div className="section-title"><h2>Quick actions</h2></div>
               <div style={{ padding: "0 28px", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
                 {[
-                  { id: "quiz", icon: "quiz", label: "Take a quiz", sub: `${panels.quizzes.length} available`, onClick: () => setActive("quizzes") },
-                  { id: "inquiry", icon: "mail", label: "Ask a vet", sub: "Asynchronous reply", onClick: () => setShowInquiry(true) },
-                  { id: "chat", icon: "chat", label: "Start chat", sub: "Live with a vet", onClick: handleStartChat },
-                  { id: "donate", icon: "gift", label: "Donate", sub: "Support the cause", onClick: () => setShowDonation(true) },
-                ].map((a) => (
+                  { id: "quiz", icon: "quiz", label: "Take a quiz", sub: `${panels.quizzes.length} available`, perm: Permission.QUIZ_TAKE, onClick: () => setActive("quizzes") },
+                  { id: "inquiry", icon: "mail", label: "Ask a vet", sub: "Asynchronous reply", perm: Permission.INQUIRY_CREATE, onClick: () => setShowInquiry(true) },
+                  { id: "chat", icon: "chat", label: "Start chat", sub: "Live with a vet", perm: Permission.CHAT_INITIATE, onClick: handleStartChat },
+                  { id: "donate", icon: "gift", label: "Donate", sub: "Support the cause", perm: Permission.DONATION_CREATE, onClick: () => setShowDonation(true) },
+                ].filter((a) => can(snapshot, a.perm)).map((a) => (
                   <button key={a.id} onClick={a.onClick} style={{ padding: 18, background: "var(--white)", border: "1px solid var(--line)", borderRadius: 14, textAlign: "left", display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 38, height: 38, borderRadius: 10, background: "var(--cream)", display: "grid", placeItems: "center" }}><Icon name={a.icon} size={16} /></div>
                     <div><div style={{ fontWeight: 600, fontSize: 14 }}>{a.label}</div><div style={{ fontSize: 12, color: "var(--ink-3)" }}>{a.sub}</div></div>
@@ -581,7 +581,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
           {active === "pets" && (
             <>
-              <div className="section-title"><h2>My pets</h2><button className="btn-ink" onClick={() => setShowAddPet(true)}><Icon name="plus" size={13} stroke={2} /> Add pet</button></div>
+              <div className="section-title"><h2>My pets</h2>{can(snapshot, Permission.PET_MANAGE) && <button className="btn-ink" onClick={() => setShowAddPet(true)}><Icon name="plus" size={13} stroke={2} /> Add pet</button>}</div>
               <PetsRow pets={panels.pets} onAdd={() => setShowAddPet(true)} />
             </>
           )}
@@ -608,7 +608,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
                   <div className="list-item" key={r.id}>
                     <div className="li-icon"><Icon name={RES_ICON(r.contentType)} size={16} /></div>
                     <div className="li-body"><div className="li-title">{r.title}</div><div className="li-meta">{r.contentType.toUpperCase()} · {r.status}</div></div>
-                    <button className="btn-ghost" onClick={() => setFeedbackTarget(r)}><Icon name="star" size={13} /> Rate</button>
+                    {can(snapshot, Permission.FEEDBACK_SUBMIT) && <button className="btn-ghost" onClick={() => setFeedbackTarget(r)}><Icon name="star" size={13} /> Rate</button>}
                   </div>
                 ))}
                 {panels.resources.length === 0 && <div className="empty-state"><strong>No resources yet.</strong></div>}
@@ -672,7 +672,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
           {active === "donations" && (
             <>
-              <div className="section-title"><h2>Donations</h2><button className="btn-ink" onClick={() => setShowDonation(true)}><Icon name="plus" size={13} stroke={2} /> Donate</button></div>
+              <div className="section-title"><h2>Donations</h2>{can(snapshot, Permission.DONATION_CREATE) && <button className="btn-ink" onClick={() => setShowDonation(true)}><Icon name="plus" size={13} stroke={2} /> Donate</button>}</div>
               <div style={{ padding: "0 28px" }}>
                 {panels.donations.length === 0 && <div className="empty-state"><strong>No donations yet.</strong></div>}
                 {panels.donations.map((d) => (
