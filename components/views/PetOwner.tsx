@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
-import { BusyButton, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast, fileToDownscaledDataUrl } from "@/components/ui";
+import { BusyButton, ConfirmDialog, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast, fileToDownscaledDataUrl } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
 import { ChatThread } from "./ChatThread";
 import { TopbarActions } from "./Popovers";
@@ -683,7 +683,8 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     setFeedbackTarget(null);
     push("Thanks for the feedback!", "success");
   };
-  const onLogout = () => { void petaid.logout(); };
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const onLogout = () => setConfirmSignOut(true); // open the styled confirmation
 
   const onAction = (a: { type: string; payload?: string; section?: string }) => {
     if (a.type === "open_inquiry") { const i = panels.inquiries.find((x) => x.id === a.payload); if (i) { setActive("inquiries"); setOpenInquiry(i); } }
@@ -890,6 +891,15 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
       )}
       {feedbackTarget && <FeedbackModal target={feedbackTarget} onClose={() => setFeedbackTarget(null)} onSubmit={handleFeedback} />}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
+      {confirmSignOut && (
+        <ConfirmDialog
+          title="Sign out?"
+          message="You'll need to sign in again to get back to your pets and vet chats."
+          confirmLabel="Sign out"
+          onConfirm={() => { setConfirmSignOut(false); void petaid.logout(); }}
+          onClose={() => setConfirmSignOut(false)}
+        />
+      )}
     </>
   );
 }
