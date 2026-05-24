@@ -13,8 +13,8 @@ type Mode = "login" | "register" | "verify" | "mfa" | "forgot" | "reset";
 
 const RESEND_COOLDOWN = 30; // seconds; mirrors the backend resend cooldown
 
-export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: () => void }) {
-  const [mode, setMode] = useState<Mode>("login");
+export function Welcome({ onAuthed, onHome, onGuest, initialMode = "login" }: { onAuthed: () => void; onHome: () => void; onGuest: () => void; initialMode?: "login" | "register" }) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [banner, setBanner] = useState<Banner>(null);
   const { push } = useToast();
 
@@ -247,7 +247,7 @@ export function Welcome({ onAuthed, onGuest }: { onAuthed: () => void; onGuest: 
       <div className="auth-pane">
         <div className="auth-form">
           {(mode === "login" || mode === "register") && (
-            <button type="button" className="auth-back" onClick={onGuest} aria-label="Back to the home page">
+            <button type="button" className="auth-back" onClick={onHome} aria-label="Back to the home page">
               <Icon name="arrow_left" size={15} stroke={1.9} />
               Back to home
             </button>

@@ -14,7 +14,7 @@ const SCENARIO_ICONS: Record<string, string> = {
   choking: "bone",
 };
 
-export function Guest({ onSignIn }: { onSignIn: () => void }) {
+export function Guest({ onSignIn, onHome }: { onSignIn: () => void; onHome?: () => void }) {
   const [guidance, setGuidance] = useState<Guidance[]>([]);
   const [petTypes, setPetTypes] = useState<PetType[]>([]);
   const [open, setOpen] = useState<Guidance | null>(null);
@@ -53,6 +53,11 @@ export function Guest({ onSignIn }: { onSignIn: () => void }) {
           </div>
         </div>
         <div style={{ flex: 1 }} />
+        {onHome && (
+          <button className="btn-ghost guest-home" onClick={onHome}>
+            <Icon name="arrow_left" size={13} stroke={1.9} /> Home
+          </button>
+        )}
         <span className="guest-badge">
           <Icon name="shield" size={12} stroke={1.8} />
           Guest mode · no account
