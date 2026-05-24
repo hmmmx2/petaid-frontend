@@ -92,7 +92,7 @@ type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
 type ApiQuiz = { id: string; title: string; passing_score: number; resource_id: string; questions: ApiQuizQ[] };
 type ApiQuizAttempt = { id: string; quiz_id: string; score_pct: number; passed: boolean; completed_at: string };
 type ApiInquiry = { id: string; subject: string; question: string; response: string | null; status: string; image_urls?: string[]; submitted_at: string; responded_at: string | null; closed_at: string | null };
-type ApiChatMsg = { id: string; sender_id: string; body: string; image_url?: string | null; sent_at: string };
+type ApiChatMsg = { id: string; sender_id: string; body: string; image_url?: string | null; sent_at: string; edited?: boolean };
 type ApiChat = {
   id: string; subject: string; status: string; started_at: string; ended_at: string | null;
   pet_owner_id?: string | null; vet_id?: string | null;
@@ -119,7 +119,7 @@ export type QuizQuestion = { prompt: string; choices: string[] };
 export type Quiz = { id: string; title: string; passingScore: number; questions: QuizQuestion[] };
 export type QuizAttempt = { quizId: string; score: number; passed: boolean; takenAt: number };
 export type Inquiry = { id: string; subject: string; question: string; response: string | null; status: string; images: string[]; createdAt: number; respondedAt: number | null };
-export type ChatMessage = { id: string; senderId: string; text: string; image: string | null; at: number };
+export type ChatMessage = { id: string; senderId: string; text: string; image: string | null; at: number; edited: boolean };
 export type Chat = {
   id: string; subject: string; status: string; startedAt: number; messages: ChatMessage[];
   ownerId: string | null; vetId: string | null;
@@ -233,7 +233,7 @@ const mapInquiry = (i: ApiInquiry): Inquiry => ({
 });
 export const mapChat = (c: ApiChat): Chat => ({
   id: c.id, subject: c.subject, status: c.status, startedAt: ms(c.started_at),
-  messages: (c.messages || []).map((m) => ({ id: m.id, senderId: m.sender_id, text: m.body, image: m.image_url || null, at: ms(m.sent_at) })),
+  messages: (c.messages || []).map((m) => ({ id: m.id, senderId: m.sender_id, text: m.body, image: m.image_url || null, at: ms(m.sent_at), edited: m.edited ?? false })),
   ownerId: c.pet_owner_id || null, vetId: c.vet_id || null,
   ownerLastRead: c.owner_last_read_at ? ms(c.owner_last_read_at) : null,
   vetLastRead: c.vet_last_read_at ? ms(c.vet_last_read_at) : null,
@@ -476,6 +476,11 @@ export const petaid = {
   postChatMessage: (id: string, body: string, imageUrl?: string | null) =>
     req<ApiChatMsg>(`/api/v1/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ body, image_url: imageUrl ?? null }) }),
   closeChat: (id: string) => req<ApiChat>(`/api/v1/chats/${id}/close`, { method: "POST" }),
+  editChatMessage: (chatId: string, messageId: string, body: string) =>
+    req<ApiChatMsg>(`/api/v1/chats/${chatId}/messages/${messageId}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteChatMessage: (chatId: string, messageId: string) =>
+    req<void>(`/api/v1/chats/${chatId}/messages/${messageId}`, { method: "DELETE" }),
+  deleteChat: (chatId: string) => req<void>(`/api/v1/chats/${chatId}`, { method: "DELETE" }),
   markChatRead: (id: string) => req<ApiChat>(`/api/v1/chats/${id}/read`, { method: "POST" }),
   listChats: () => req<ApiChat[]>("/api/v1/chats"),
   donate: (amountCents: number, currency = "USD", recurring = false) =>

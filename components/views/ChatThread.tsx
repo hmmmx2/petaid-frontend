@@ -10,7 +10,7 @@
  * writes still hit the REST controller (RBAC + rate limits) and the WebSocket
  * echoes them back to both participants in real time. */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { BusyButton, Icon, Modal, fileToDownscaledDataUrl, relTime, useToast } from "@/components/ui";
+import { BusyButton, ConfirmDialog, Icon, Modal, fileToDownscaledDataUrl, relTime, useToast } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
 import type { Chat, ChatMessage } from "@/lib/petaid";
 
@@ -74,7 +74,7 @@ export function ChatThread({
   waitingBanner?: ReactNode;
   emptyHint?: string;
 }) {
-  const { sendMessage, markRead, sendTyping, typingAccount, presenceFor, setActiveChatId } = useChatRealtime();
+  const { sendMessage, editMessage, deleteMessage, deleteChat, markRead, sendTyping, typingAccount, presenceFor, setActiveChatId } = useChatRealtime();
   const { push } = useToast();
 
   const [text, setText] = useState("");
@@ -83,6 +83,8 @@ export function ChatThread({
   const [zoom, setZoom] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [newCount, setNewCount] = useState(0);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ kind: "msg" | "chat"; id?: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -175,8 +177,25 @@ export function ChatThread({
     finally { setReading(false); if (fileRef.current) fileRef.current.value = ""; }
   };
 
+  const startEdit = (m: Row) => {
+    setEditingId(m.id);
+    setText(m.text);
+    setImage(null);
+    setTimeout(() => { inputRef.current?.focus(); autoGrow(); }, 0);
+  };
+  const cancelEdit = () => { setEditingId(null); setText(""); };
+
   const send = async () => {
     const body = text.trim();
+    // Edit mode: save the in-progress edit instead of sending a new message.
+    if (editingId) {
+      if (!body) return;
+      const id = editingId;
+      setText(""); setEditingId(null); stopTyping();
+      try { await editMessage(chat.id, id, body); }
+      catch (e) { setText(body); setEditingId(id); push(e instanceof Error ? e.message : "Couldn't save your edit.", "danger"); }
+      return;
+    }
     if ((!body && !image) || closed) return;
     setText("");
     const img = image;
@@ -234,9 +253,14 @@ export function ChatThread({
       onClose={onClose}
       wide
       footer={
-        closed
-          ? <button className="btn-secondary" onClick={onClose}>Close</button>
-          : <BusyButton className="btn-secondary" onClick={onCloseChat} busyLabel="Ending…">End chat</BusyButton>
+        <>
+          <button type="button" className="btn-ghost" style={{ color: "var(--danger)", marginRight: "auto" }} onClick={() => setConfirmDelete({ kind: "chat" })}>
+            Delete chat
+          </button>
+          {closed
+            ? <button className="btn-secondary" onClick={onClose}>Close</button>
+            : <BusyButton className="btn-secondary" onClick={onCloseChat} busyLabel="Ending…">End chat</BusyButton>}
+        </>
       }
     >
       {chat.status === "initiated" && waitingBanner}
@@ -249,10 +273,16 @@ export function ChatThread({
         {rows.map((r) => (
           <div key={r.id}>
             {r.daySep && <div className="ct-day"><span>{dayLabel(r.at)}</span></div>}
-            <div className={`ct-row ${r.mine ? "mine" : "theirs"} ${r.lastInGroup ? "tail" : ""}`}>
+            <div className={`ct-row ${r.mine ? "mine" : "theirs"} ${r.lastInGroup ? "tail" : ""} ${editingId === r.id ? "editing" : ""}`}>
               {!r.mine && (
                 <div className="ct-avatar" aria-hidden="true">
                   {r.lastInGroup ? initialsOf(peerName) : ""}
+                </div>
+              )}
+              {r.mine && !closed && (
+                <div className="ct-msg-actions">
+                  <button type="button" aria-label="Edit message" title="Edit" onClick={() => startEdit(r)}><Icon name="edit" size={13} /></button>
+                  <button type="button" aria-label="Delete message" title="Delete" onClick={() => setConfirmDelete({ kind: "msg", id: r.id })}><Icon name="trash" size={13} /></button>
                 </div>
               )}
               <div className="ct-bubble-wrap">
@@ -262,7 +292,7 @@ export function ChatThread({
                       <img src={r.image} alt="Shared photo" className="ct-img" />
                     </button>
                   )}
-                  {r.text && <span className="ct-text">{r.text}</span>}
+                  {r.text && <span className="ct-text">{r.text}{r.edited && <span className="ct-edited"> (edited)</span>}</span>}
                 </div>
                 {r.lastInGroup && (
                   <div className="ct-meta">
@@ -300,30 +330,40 @@ export function ChatThread({
         <div className="ct-closed">This chat has ended — it is read-only.</div>
       ) : (
         <div className="ct-composer">
-          {image && (
+          {editingId && (
+            <div className="ct-editing-bar">
+              <span><Icon name="edit" size={12} /> Editing message</span>
+              <button type="button" className="btn-link" onClick={cancelEdit}>Cancel</button>
+            </div>
+          )}
+          {image && !editingId && (
             <div className="ct-attach-preview">
               <img src={image} alt="Attachment preview" />
               <button type="button" aria-label="Remove photo" onClick={() => setImage(null)}>×</button>
             </div>
           )}
           <div className="ct-composer-row">
-            <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickPhoto(e.target.files)} />
-            <button type="button" className="ct-attach" onClick={() => fileRef.current?.click()} disabled={reading} aria-label="Attach a photo" title="Attach a photo">
-              {reading ? "…" : <Icon name="upload" size={16} />}
-            </button>
+            {!editingId && (
+              <>
+                <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => pickPhoto(e.target.files)} />
+                <button type="button" className="ct-attach" onClick={() => fileRef.current?.click()} disabled={reading} aria-label="Attach a photo" title="Attach a photo">
+                  {reading ? "…" : <Icon name="upload" size={16} />}
+                </button>
+              </>
+            )}
             <textarea
               ref={inputRef}
               className="ct-input"
               value={text}
-              onChange={(e) => { setText(e.target.value); flagTyping(); autoGrow(); }}
+              onChange={(e) => { setText(e.target.value); if (!editingId) flagTyping(); autoGrow(); }}
               onKeyDown={onKeyDown}
               onBlur={stopTyping}
-              placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
+              placeholder={editingId ? "Edit your message…  (Enter to save)" : "Type a message…  (Enter to send, Shift+Enter for a new line)"}
               rows={1}
               maxLength={2000}
             />
-            <BusyButton className="ct-send" onClick={send} disabled={!text.trim() && !image} aria-label="Send message">
-              <Icon name="send" size={15} />
+            <BusyButton className="ct-send" onClick={send} disabled={!text.trim() && !image} aria-label={editingId ? "Save edit" : "Send message"}>
+              <Icon name={editingId ? "check" : "send"} size={15} />
             </BusyButton>
           </div>
         </div>
@@ -334,6 +374,27 @@ export function ChatThread({
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 250, display: "grid", placeItems: "center", padding: 24, cursor: "zoom-out" }}>
           <img src={zoom} alt="Shared photo" style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 12 }} />
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={confirmDelete.kind === "chat" ? "Delete conversation?" : "Delete message?"}
+          message={confirmDelete.kind === "chat"
+            ? "This permanently deletes the whole conversation and all its messages for both of you."
+            : "This permanently removes this message for both of you."}
+          confirmLabel="Delete"
+          onConfirm={async () => {
+            const target = confirmDelete;
+            setConfirmDelete(null);
+            try {
+              if (target.kind === "chat") { await deleteChat(chat.id); onClose(); }
+              else if (target.id) { await deleteMessage(chat.id, target.id); }
+            } catch (e) {
+              push(e instanceof Error ? e.message : "Couldn't delete. Please try again.", "danger");
+            }
+          }}
+          onClose={() => setConfirmDelete(null)}
+        />
       )}
     </Modal>
   );

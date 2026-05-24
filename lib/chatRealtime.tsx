@@ -23,6 +23,9 @@ type ChatRealtimeCtx = {
   typingAccount: (chatId: string) => string | null;
   presenceFor: (accountId: string | null | undefined) => Presence;
   sendMessage: (chatId: string, body: string, image?: string | null) => Promise<void>;
+  editMessage: (chatId: string, messageId: string, body: string) => Promise<void>;
+  deleteMessage: (chatId: string, messageId: string) => Promise<void>;
+  deleteChat: (chatId: string) => Promise<void>;
   markRead: (chatId: string) => Promise<void>;
   sendTyping: (chatId: string, isTyping: boolean) => void;
   refreshChats: () => Promise<void>;
@@ -32,6 +35,12 @@ const Ctx = createContext<ChatRealtimeCtx | null>(null);
 
 const sortChats = (cs: Chat[]) =>
   [...cs].sort((a, b) => (b.lastMessage?.at || b.startedAt) - (a.lastMessage?.at || a.startedAt));
+
+/** Recompute a chat's last-message preview from its current message list. */
+const lastOf = (messages: ChatMessage[]) => {
+  const l = messages[messages.length - 1];
+  return l ? { senderId: l.senderId, preview: l.text || (l.image ? "📷 Photo" : ""), at: l.at } : null;
+};
 
 export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
   const { snapshot } = usePetAid();
@@ -88,13 +97,38 @@ export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
 
   const sendMessage = useCallback(async (chatId: string, body: string, image?: string | null) => {
     const m = await petaid.postChatMessage(chatId, body, image ?? null);
-    const msg: ChatMessage = { id: m.id, senderId: m.sender_id, text: m.body, image: m.image_url || null, at: ms(m.sent_at) };
+    const msg: ChatMessage = { id: m.id, senderId: m.sender_id, text: m.body, image: m.image_url || null, at: ms(m.sent_at), edited: false };
     setChats((prev) => sortChats(prev.map((c) => {
       if (c.id !== chatId) return c;
       if (c.messages.some((x) => x.id === msg.id)) return c;
       return { ...c, messages: [...c.messages, msg], lastMessage: { senderId: msg.senderId, preview: msg.text || (msg.image ? "📷 Photo" : ""), at: msg.at } };
     })));
   }, []);
+
+  // --- CRUD: edit / delete a message, delete a whole conversation ---------- #
+  const editMessage = useCallback(async (chatId: string, messageId: string, body: string) => {
+    const m = await petaid.editChatMessage(chatId, messageId, body);
+    setChats((prev) => sortChats(prev.map((c) => {
+      if (c.id !== chatId) return c;
+      const messages = c.messages.map((x) => (x.id === messageId ? { ...x, text: m.body, edited: m.edited ?? true } : x));
+      return { ...c, messages, lastMessage: lastOf(messages) ?? c.lastMessage };
+    })));
+  }, []);
+
+  const deleteMessage = useCallback(async (chatId: string, messageId: string) => {
+    await petaid.deleteChatMessage(chatId, messageId);
+    setChats((prev) => sortChats(prev.map((c) => {
+      if (c.id !== chatId) return c;
+      const messages = c.messages.filter((x) => x.id !== messageId);
+      return { ...c, messages, lastMessage: lastOf(messages) };
+    })));
+  }, []);
+
+  const deleteChat = useCallback(async (chatId: string) => {
+    await petaid.deleteChat(chatId);
+    if (activeRef.current === chatId) setActiveChatId(null);
+    setChats((prev) => prev.filter((c) => c.id !== chatId));
+  }, [setActiveChatId]);
 
   const sendTyping = useCallback((chatId: string, isTyping: boolean) => {
     chatSocket.send({ type: "typing", chat_id: chatId, is_typing: isTyping });
@@ -124,7 +158,7 @@ export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
       switch (m.type) {
         case "message": {
           const chatId = m.chat_id;
-          const msg: ChatMessage = { id: m.message.id, senderId: m.message.sender_id, text: m.message.body, image: m.message.image_url || null, at: ms(m.message.sent_at) };
+          const msg: ChatMessage = { id: m.message.id, senderId: m.message.sender_id, text: m.message.body, image: m.message.image_url || null, at: ms(m.message.sent_at), edited: m.message.edited ?? false };
           const fromMe = msg.senderId === me;
           const isActive = activeRef.current === chatId;
           setChats((prev) => {
@@ -152,6 +186,26 @@ export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
         case "chat_update":
           patchChat(m.chat_id, (c) => ({ ...c, status: m.status ?? c.status, vetId: m.vet_id ?? c.vetId }));
           break;
+        case "message_update":
+          patchChat(m.chat_id, (c) => {
+            const messages = c.messages.map((x) =>
+              x.id === m.message.id
+                ? { ...x, text: m.message.body, image: m.message.image_url || null, edited: m.message.edited ?? true }
+                : x,
+            );
+            return { ...c, messages, lastMessage: lastOf(messages) ?? c.lastMessage };
+          });
+          break;
+        case "message_deleted":
+          patchChat(m.chat_id, (c) => {
+            const messages = c.messages.filter((x) => x.id !== m.message_id);
+            return { ...c, messages, lastMessage: lastOf(messages) };
+          });
+          break;
+        case "chat_deleted":
+          if (activeRef.current === m.chat_id) setActiveChatId(null);
+          setChats((prev) => prev.filter((c) => c.id !== m.chat_id));
+          break;
         case "read":
           patchChat(m.chat_id, (c) =>
             m.account_id === c.ownerId
@@ -174,7 +228,7 @@ export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
       }
     });
     return off;
-  }, [markRead, patchChat]);
+  }, [markRead, patchChat, setActiveChatId]);
 
   // Expire stale typing indicators.
   useEffect(() => {
@@ -187,7 +241,7 @@ export function ChatRealtimeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <Ctx.Provider value={{ chats, myId, activeChatId, setActiveChatId, typingAccount, presenceFor, sendMessage, markRead, sendTyping, refreshChats }}>
+    <Ctx.Provider value={{ chats, myId, activeChatId, setActiveChatId, typingAccount, presenceFor, sendMessage, editMessage, deleteMessage, deleteChat, markRead, sendTyping, refreshChats }}>
       {children}
     </Ctx.Provider>
   );

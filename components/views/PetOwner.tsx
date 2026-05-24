@@ -8,6 +8,7 @@ import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY,
 import { BusyButton, ConfirmDialog, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast, fileToDownscaledDataUrl } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
 import { ChatThread } from "./ChatThread";
+import { FaqPanel } from "./Faq";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
 import { HelpCenter } from "./Help";
@@ -656,6 +657,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const [showDonation, setShowDonation] = useState(false);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [showStartChat, setShowStartChat] = useState(false);
+  const [chatTab, setChatTab] = useState<"chats" | "faq">("chats");
   const [feedbackTarget, setFeedbackTarget] = useState<Resource | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState("profile");
@@ -868,30 +870,48 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
           {active === "chats" && (
             <>
-              <div className="section-title"><h2>Vet chat</h2><button className="btn-ink" onClick={() => setShowStartChat(true)}><Icon name="plus" size={13} stroke={2} /> Start new chat</button></div>
-              <div style={{ padding: "0 28px" }}>
-                {chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong>Tap &quot;Start new chat&quot; to talk with a vet.</div>}
-                {chats.map((c) => {
-                  const pres = presenceFor(c.vetId);
-                  const preview = c.lastMessage ? `${c.lastMessage.senderId === account.id ? "You: " : ""}${c.lastMessage.preview}` : "No messages yet";
-                  return (
-                    <div className={`list-item chat-li ${c.unread > 0 ? "unread" : ""}`} key={c.id} {...clickable(() => setOpenChatId(c.id))}>
-                      <div className="li-icon" style={{ position: "relative" }}>
-                        <Icon name="chat" size={16} />
-                        {c.status !== "closed" && <span className={`chat-pdot ${pres.online ? "on" : ""}`} />}
-                      </div>
-                      <div className="li-body">
-                        <div className="li-title">{c.subject || "Vet chat"}</div>
-                        <div className="li-meta chat-preview">{preview}</div>
-                      </div>
-                      <div className="chat-li-aside">
-                        <span className="chat-li-time">{relTime(c.lastMessage?.at || c.startedAt)}</span>
-                        {c.unread > 0 ? <span className="chat-unread">{c.unread}</span> : <StatusPill status={c.status} />}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="section-title">
+                <h2>Vet chat</h2>
+                {chatTab === "chats" && <button className="btn-ink" onClick={() => setShowStartChat(true)}><Icon name="plus" size={13} stroke={2} /> Start new chat</button>}
               </div>
+              <div className="chat-tabs" role="tablist" aria-label="Vet chat sections">
+                <button role="tab" aria-selected={chatTab === "chats"} className={`chat-tab ${chatTab === "chats" ? "on" : ""}`} onClick={() => setChatTab("chats")}>
+                  <Icon name="chat" size={14} /> Chats{chatUnread > 0 && <span className="chat-tab-badge">{chatUnread}</span>}
+                </button>
+                <button role="tab" aria-selected={chatTab === "faq"} className={`chat-tab ${chatTab === "faq" ? "on" : ""}`} onClick={() => setChatTab("faq")}>
+                  <Icon name="book" size={14} /> Help &amp; FAQ
+                </button>
+              </div>
+
+              {chatTab === "chats" ? (
+                <div style={{ padding: "0 28px" }}>
+                  {chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong>Tap &quot;Start new chat&quot; to talk with a vet, or browse Help &amp; FAQ.</div>}
+                  {chats.map((c) => {
+                    const pres = presenceFor(c.vetId);
+                    const preview = c.lastMessage ? `${c.lastMessage.senderId === account.id ? "You: " : ""}${c.lastMessage.preview}` : "No messages yet";
+                    return (
+                      <div className={`list-item chat-li ${c.unread > 0 ? "unread" : ""}`} key={c.id} {...clickable(() => setOpenChatId(c.id))}>
+                        <div className="li-icon" style={{ position: "relative" }}>
+                          <Icon name="chat" size={16} />
+                          {c.status !== "closed" && <span className={`chat-pdot ${pres.online ? "on" : ""}`} />}
+                        </div>
+                        <div className="li-body">
+                          <div className="li-title">{c.subject || "Vet chat"}</div>
+                          <div className="li-meta chat-preview">{preview}</div>
+                        </div>
+                        <div className="chat-li-aside">
+                          <span className="chat-li-time">{relTime(c.lastMessage?.at || c.startedAt)}</span>
+                          {c.unread > 0 ? <span className="chat-unread">{c.unread}</span> : <StatusPill status={c.status} />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ padding: "0 28px" }}>
+                  <FaqPanel onStartChat={() => { setChatTab("chats"); setShowStartChat(true); }} />
+                </div>
+              )}
             </>
           )}
 
