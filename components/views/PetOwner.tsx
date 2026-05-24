@@ -3,7 +3,7 @@
 /* Pet Owner dashboard — 1:1 port of views/20-pet-owner.jsx, wired to the API.
    Covers SRS §7.1/7.2/7.4/7.5/7.6/7.7. */
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Guidance, type PetOwnerPanels, type Quiz, type Resource, type Snapshot } from "@/lib/petaid";
 import { BusyButton, ConfirmDialog, Field, Icon, ImageGallery, Modal, StarRow, clickable, relTime, maskReference, useToast, fileToDownscaledDataUrl } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
@@ -559,6 +559,53 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
   );
 }
 
+function StartChatModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (subject: string, vetId: string | null) => Promise<void> }) {
+  const [topic, setTopic] = useState<"advice" | "support">("advice");
+  const [vetId, setVetId] = useState("");
+  const [note, setNote] = useState("");
+  const [vets, setVets] = useState<{ id: string; full_name: string; initials: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { petaid.listVets().then(setVets).catch(() => {}); }, []);
+
+  const TOPICS = [
+    { id: "advice" as const, label: "Pet first-aid advice", desc: "Medical guidance from a veterinary expert.", icon: "first_aid" },
+    { id: "support" as const, label: "Customer support", desc: "Account help and general questions.", icon: "inquiry" },
+  ];
+  const submit = async () => {
+    setError(null);
+    const topicLabel = topic === "advice" ? "Pet first-aid advice" : "Customer support";
+    const subject = (note.trim() ? `${topicLabel}: ${note.trim()}` : topicLabel).slice(0, 160);
+    try { await onSubmit(subject, vetId || null); }
+    catch (e) { setError(e instanceof Error ? e.message : "Couldn't start the chat. Please try again."); }
+  };
+  return (
+    <Modal title="Start a chat" subtitle="Choose a topic and who you'd like to reach." onClose={onClose}
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-primary" onClick={submit} busyLabel="Starting…">Start chat</BusyButton></>}>
+      <Field label="What's this about?">
+        <div className="topic-grid">
+          {TOPICS.map((t) => (
+            <button key={t.id} type="button" className={`topic-card ${topic === t.id ? "on" : ""}`} onClick={() => setTopic(t.id)} aria-pressed={topic === t.id}>
+              <div className="topic-icon"><Icon name={t.icon} size={18} /></div>
+              <div><div className="topic-label">{t.label}</div><div className="topic-desc">{t.desc}</div></div>
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Who would you like to chat with?" hint="Pick a specific expert, or let any available expert respond.">
+        <select value={vetId} onChange={(e) => setVetId(e.target.value)}>
+          <option value="">Any available expert</option>
+          {vets.map((v) => <option key={v.id} value={v.id}>Dr. {v.full_name}</option>)}
+        </select>
+      </Field>
+      <Field label="Add a note (optional)" hint="A short summary helps them help you faster.">
+        <textarea value={note} onChange={(e) => setNote(e.target.value.slice(0, 140))} rows={3} placeholder="e.g. My dog has been limping since this morning…" style={{ padding: "11px 14px", border: "1px solid var(--line-2)", borderRadius: 10, resize: "vertical" }} />
+      </Field>
+      {error && <div className="banner error">{error}</div>}
+    </Modal>
+  );
+}
+
 function FeedbackModal({ target, onClose, onSubmit }: any) {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
@@ -608,6 +655,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
   const [openQuiz, setOpenQuiz] = useState<Quiz | null>(null);
   const [showDonation, setShowDonation] = useState(false);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
+  const [showStartChat, setShowStartChat] = useState(false);
   const [feedbackTarget, setFeedbackTarget] = useState<Resource | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSection, setSettingsSection] = useState("profile");
@@ -657,15 +705,12 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
       throw e;
     }
   };
-  const handleStartChat = async () => {
-    try {
-      const c = await petaid.startChat("Vet chat");
-      await refreshChats();
-      setActive("chats");
-      setOpenChatId(c.id);
-    } catch (e) {
-      push(e instanceof Error ? e.message : "Couldn't start the chat. Please try again.", "danger");
-    }
+  const submitStartChat = async (subject: string, vetId: string | null) => {
+    const c = await petaid.startChat(subject, vetId);
+    await refreshChats();
+    setShowStartChat(false);
+    setActive("chats");
+    setOpenChatId(c.id);
   };
   const handleCloseChat = async () => {
     if (!openChatId) return;
@@ -724,7 +769,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
                 {[
                   { id: "quiz", icon: "quiz", label: "Take a quiz", sub: `${panels.quizzes.length} available`, perm: Permission.QUIZ_TAKE, onClick: () => setActive("quizzes") },
                   { id: "inquiry", icon: "mail", label: "Ask a vet", sub: "Asynchronous reply", perm: Permission.INQUIRY_CREATE, onClick: () => setShowInquiry(true) },
-                  { id: "chat", icon: "chat", label: "Start chat", sub: "Live with a vet", perm: Permission.CHAT_INITIATE, onClick: handleStartChat },
+                  { id: "chat", icon: "chat", label: "Start chat", sub: "Live with a vet", perm: Permission.CHAT_INITIATE, onClick: () => setShowStartChat(true) },
                   { id: "donate", icon: "gift", label: "Donate", sub: "Support the cause", perm: Permission.DONATION_CREATE, onClick: () => setShowDonation(true) },
                 ].filter((a) => can(snapshot, a.perm)).map((a) => (
                   <button key={a.id} onClick={a.onClick} style={{ padding: 18, background: "var(--white)", border: "1px solid var(--line)", borderRadius: 14, textAlign: "left", display: "flex", alignItems: "center", gap: 12 }}>
@@ -823,7 +868,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
 
           {active === "chats" && (
             <>
-              <div className="section-title"><h2>Vet chat</h2><button className="btn-ink" onClick={handleStartChat}><Icon name="plus" size={13} stroke={2} /> Start new chat</button></div>
+              <div className="section-title"><h2>Vet chat</h2><button className="btn-ink" onClick={() => setShowStartChat(true)}><Icon name="plus" size={13} stroke={2} /> Start new chat</button></div>
               <div style={{ padding: "0 28px" }}>
                 {chats.length === 0 && <div className="empty-state"><strong>No chats yet.</strong>Tap &quot;Start new chat&quot; to talk with a vet.</div>}
                 {chats.map((c) => {
@@ -877,6 +922,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
       {openInquiry && <InquiryDetailModal inquiry={openInquiry} onClose={() => setOpenInquiry(null)} />}
       {openQuiz && <QuizModal quiz={openQuiz} onClose={() => setOpenQuiz(null)} onSubmit={handleQuizSubmit} />}
       {showDonation && <DonationModal donations={panels.donations} onClose={() => setShowDonation(false)} onSubmit={handleDonate} />}
+      {showStartChat && <StartChatModal onClose={() => setShowStartChat(false)} onSubmit={submitStartChat} />}
       {openChat && (
         <ChatThread
           key={openChat.id}

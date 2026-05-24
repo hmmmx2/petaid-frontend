@@ -2948,3 +2948,31 @@ html.reduce-motion *::after {
 .mfa-verify input { padding: 9px 12px; border: 1px solid var(--line-2); border-radius: 10px; }
 .mfa-ok { font-size: 12.5px; font-weight: 600; color: var(--success); }
 .mfa-bad { font-size: 12.5px; font-weight: 600; color: var(--danger); }
+
+/* ----- Start-chat modal: topic picker ----- */
+.topic-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.topic-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  border: 1.5px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--white);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.topic-card:hover { border-color: var(--line); background: var(--gray); }
+.topic-card.on { border-color: var(--accent); background: var(--accent-soft); }
+.topic-icon {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--white);
+  color: var(--accent-deep);
+  border: 1px solid var(--line);
+}
+.topic-card.on .topic-icon { background: var(--white); }
+.topic-label { font-size: 13px; font-weight: 600; }
+.topic-desc { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; line-height: 1.35; }
+@media (max-width: 480px) { .topic-grid { grid-template-columns: 1fr; } }

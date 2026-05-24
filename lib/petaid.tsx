@@ -468,7 +468,10 @@ export const petaid = {
   respondInquiry: (id: string, response: string) =>
     req(`/api/v1/inquiries/${id}/respond`, { method: "POST", body: JSON.stringify({ response }) }),
   closeInquiry: (id: string) => req(`/api/v1/inquiries/${id}/close`, { method: "POST" }),
-  startChat: (subject: string) => req<ApiChat>("/api/v1/chats", { method: "POST", body: JSON.stringify({ subject }) }),
+  startChat: (subject: string, vetId?: string | null) =>
+    req<ApiChat>("/api/v1/chats", { method: "POST", body: JSON.stringify({ subject, vet_id: vetId ?? null }) }),
+  /** Directory of veterinary experts an owner can direct a chat to. */
+  listVets: () => req<{ id: string; full_name: string; initials: string }[]>("/api/v1/chats/vets"),
   joinChat: (id: string) => req(`/api/v1/chats/${id}/join`, { method: "POST" }),
   postChatMessage: (id: string, body: string, imageUrl?: string | null) =>
     req<ApiChatMsg>(`/api/v1/chats/${id}/messages`, { method: "POST", body: JSON.stringify({ body, image_url: imageUrl ?? null }) }),
