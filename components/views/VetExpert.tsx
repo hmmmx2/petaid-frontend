@@ -5,7 +5,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
-import { BusyButton, Field, Icon, ImageGallery, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
+import { BusyButton, ConfirmDialog, Field, Icon, ImageGallery, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
 import { ChatThread } from "./ChatThread";
 import { TopbarActions } from "./Popovers";
@@ -58,7 +58,7 @@ function AdminSidebar({ active, setActive, panels, account, onLogout, open, onCl
       <div className="profile-row">
         <div className="avatar">{account.name.split(" ").map((s: string) => s[0]).slice(0, 2).join("")}</div>
         <div className="name">Dr. {account.name}<span>{account.speciality || "Veterinary expert"}</span></div>
-        <button className="logout" title="Sign out" aria-label="Sign out" onClick={() => { if (window.confirm("Sign out of PetAid?")) onLogout(); }}><Icon name="sign_out" size={14} /></button>
+        <button className="logout" title="Sign out" aria-label="Sign out" onClick={onLogout}><Icon name="sign_out" size={14} /></button>
       </div>
     </aside>
   );
@@ -257,7 +257,8 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
   // Live chat list comes from the realtime provider (WebSocket-backed): new
   // sessions, replies, read receipts, typing and presence arrive without polling.
   const openChat = openChatId ? chats.find((c) => c.id === openChatId) || null : null;
-  const onLogout = () => { void petaid.logout(); };
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const onLogout = () => setConfirmSignOut(true); // open the styled confirmation
 
   const respondInquiry = async (text: string) => {
     await petaid.respondInquiry(openInquiry.id, text);
@@ -594,6 +595,15 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
         />
       )}
       {showHelp && <HelpCenter onClose={() => setShowHelp(false)} />}
+      {confirmSignOut && (
+        <ConfirmDialog
+          title="Sign out?"
+          message="You'll need to sign in again (with your authenticator code) to access the admin dashboard."
+          confirmLabel="Sign out"
+          onConfirm={() => { setConfirmSignOut(false); void petaid.logout(); }}
+          onClose={() => setConfirmSignOut(false)}
+        />
+      )}
     </>
   );
 }

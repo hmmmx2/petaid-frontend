@@ -259,6 +259,40 @@ export const Modal = ({
   );
 };
 
+/* ---------- ConfirmDialog ----------
+   A small on-brand confirmation modal — replaces native window.confirm() so the
+   prompt matches the app styling and never blocks the main thread. */
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  onConfirm,
+  onClose,
+}: {
+  title: ReactNode;
+  message: ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      title={title}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>{cancelLabel}</button>
+          <button className="btn-primary" onClick={onConfirm}>{confirmLabel}</button>
+        </>
+      }
+    >
+      <p style={{ fontSize: 13.5, color: "var(--ink-2)", margin: 0, lineHeight: 1.5 }}>{message}</p>
+    </Modal>
+  );
+}
+
 /* ---------- Toasts ---------- */
 type ToastVariant = "default" | "success" | "danger";
 const ToastContext = createContext<{ push: (m: string, v?: ToastVariant) => void }>({
