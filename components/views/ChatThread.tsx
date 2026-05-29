@@ -235,9 +235,7 @@ export function ChatThread({
       ? "Active now"
       : presence.lastSeen
         ? `Active ${relTime(presence.lastSeen)}`
-        : peerId
-          ? "Offline"
-          : "Waiting to connect";
+        : "Offline";
 
   const subtitle = (
     <span className="ct-sub">

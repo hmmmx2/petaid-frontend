@@ -952,7 +952,6 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
           peerName="Vet team"
           onClose={() => setOpenChatId(null)}
           onCloseChat={handleCloseChat}
-          waitingBanner={<div className="banner info">Waiting for a vet to join — you can send messages now and they&apos;ll see them when they pick up the chat.</div>}
         />
       )}
       {feedbackTarget && <FeedbackModal target={feedbackTarget} onClose={() => setFeedbackTarget(null)} onSubmit={handleFeedback} />}
