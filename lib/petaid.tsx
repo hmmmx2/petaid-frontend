@@ -113,7 +113,8 @@ export type Account = {
 };
 export type PetType = { id: string; name: string; emoji: string; bg: string };
 export type Pet = { id: string; name: string; breed: string; age: number; emoji: string; bg: string; typeId: string; typeName: string; notes: string; image: string | null; icon: string | null };
-export type Guidance = { id: string; title: string; emergencyType: string; steps: string[]; summary: string; petTypeIds: string[]; petTypeNames: string[]; resourceCount: number };
+export type GuidanceResource = { id: string; title: string; contentType: string; mediaPath: string | null };
+export type Guidance = { id: string; title: string; emergencyType: string; steps: string[]; summary: string; petTypeIds: string[]; petTypeNames: string[]; resourceCount: number; resources: GuidanceResource[] };
 export type Resource = { id: string; title: string; contentType: string; status: string; petTypeIds: string[]; petTypeName: string };
 export type QuizQuestion = { prompt: string; choices: string[] };
 export type Quiz = { id: string; title: string; passingScore: number; questions: QuizQuestion[] };
@@ -217,6 +218,7 @@ const mapGuidance = (g: ApiGuidance): Guidance => ({
   id: g.id, title: g.title, emergencyType: g.emergency_type, steps: g.steps, summary: g.summary,
   petTypeIds: g.pet_type ? [g.pet_type.id] : [], petTypeNames: g.pet_type ? [g.pet_type.name] : [],
   resourceCount: g.resources?.length || 0,
+  resources: (g.resources || []).map((r) => ({ id: r.id, title: r.title, contentType: r.content_type, mediaPath: r.media_path })),
 });
 const mapResource = (r: ApiResource): Resource => ({
   id: r.id, title: r.title, contentType: r.content_type, status: r.status,
@@ -455,6 +457,17 @@ export const petaid = {
       guidance: g.map(mapGuidance),
       petTypes: pt.map((t) => ({ id: t.id, name: t.name, emoji: t.icon_emoji, bg: t.icon_bg })),
     };
+  },
+
+  /* Emergency first-aid lookup (SRS 7.1 sequence): findGuidance(petType, type).
+     Returns guidance for a pet type, optionally narrowed to one emergency type,
+     each with its linked resources + media path. */
+  listGuidance: (petTypeId?: string, emergencyType?: string): Promise<Guidance[]> => {
+    const qs = new URLSearchParams();
+    if (petTypeId) qs.set("pet_type_id", petTypeId);
+    if (emergencyType) qs.set("emergency_type", emergencyType);
+    const q = qs.toString();
+    return req<ApiGuidance[]>(`/api/v1/first-aid${q ? `?${q}` : ""}`).then((rows) => rows.map(mapGuidance));
   },
 
   /* domain actions */

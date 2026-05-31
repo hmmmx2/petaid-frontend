@@ -329,37 +329,96 @@ function PetProfileModal({ pet, petTypes, onClose, onSave, onDelete }: any) {
   );
 }
 
-/* ---------- Emergency drawer ---------- */
-function EmergencyDrawer({ onClose, guidance }: { onClose: () => void; guidance: Guidance[] }) {
+/* ---------- Emergency drawer ----------
+   Implements the SRS 7.1 sequence: tap emergency → showSavedPets → selectPet →
+   getPetType → showEmergencyTypes(petType) → selectEmergencyType → findGuidance
+   (with linked resources + media) → displayGuidanceWithMedia. */
+const HINT = { fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase" as const, margin: "2px 0 10px" };
+
+function EmergencyDrawer({ onClose, pets }: { onClose: () => void; pets: any[] }) {
+  const [stepView, setStepView] = useState<"pets" | "types" | "guidance">("pets");
+  const [pet, setPet] = useState<any>(null);
+  const [guidance, setGuidance] = useState<Guidance[]>([]);
   const [active, setActive] = useState<Guidance | null>(null);
   const [done, setDone] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState<string | null>(null);
+
+  // selectPet(petId) → getPetType() → findGuidance(petType) → showEmergencyTypes
+  const selectPet = async (p: any) => {
+    setPet(p); setError(null); setLoading(true);
+    try {
+      setGuidance(await petaid.listGuidance(p.typeId)); // filtered by the pet's PetType
+      setStepView("types");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't load guidance. Check your connection.");
+    } finally { setLoading(false); }
+  };
+
+  // selectEmergencyType(type) → findGuidance(petType, type)
+  const selectType = (type: string) => {
+    setActive(guidance.find((g) => g.emergencyType === type) || null);
+    setDone(new Set());
+    setStepView("guidance");
+  };
+
+  const types = Array.from(new Set(guidance.map((g) => g.emergencyType)));
+  const heading = stepView === "pets" ? "Emergency First Aid"
+    : stepView === "types" ? `${pet?.name} · choose emergency`
+    : active?.title || "Guidance";
+
   return (
     <>
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true">
         <div className="drawer-head">
-          <div><div className="live">Live triage</div><h2>{active ? active.title : "Emergency First Aid"}</h2></div>
+          <div><div className="live">Live triage</div><h2>{heading}</h2></div>
           <button className="modal-close" onClick={onClose}><Icon name="x" size={14} stroke={2} /></button>
         </div>
         <div className="drawer-body">
-          {!active && (
+          {error && <div className="banner error" style={{ marginBottom: 10 }}>{error}</div>}
+
+          {/* Step 1 — showSavedPets() */}
+          {stepView === "pets" && (
             <>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                Pick a scenario · works offline
-              </div>
-              {guidance.map((g) => (
-                <button className="scenario" key={g.id} onClick={() => { setActive(g); setDone(new Set()); }}>
-                  <div className="scenario-icon"><Icon name={SCENARIO_ICONS[g.emergencyType] || "first_aid"} size={18} /></div>
-                  <div className="scenario-text"><strong>{g.title}</strong><span>{g.steps.length} steps · pet-type filtered</span></div>
-                  <div className="scenario-time">→</div>
+              <div style={HINT}>Who is the emergency for?</div>
+              {pets.map((p: any) => (
+                <button className="scenario" key={p.id} onClick={() => selectPet(p)} disabled={loading}>
+                  <div className="scenario-icon" style={{ overflow: "hidden", padding: 0 }}><PetAvatar pet={p} className="member-avatar" /></div>
+                  <div className="scenario-text"><strong>{p.name}</strong><span>{p.typeName || "Pet"} · {p.breed || "—"}</span></div>
+                  <div className="scenario-time">{loading ? "…" : "→"}</div>
                 </button>
               ))}
-              {guidance.length === 0 && <div className="empty-state"><strong>No matching guidance.</strong>Add a pet to filter content.</div>}
+              {pets.length === 0 && <div className="empty-state"><strong>No pets yet.</strong>Add a pet to get type-specific guidance.</div>}
             </>
           )}
-          {active && (
+
+          {/* Step 2 — showEmergencyTypes(petType) */}
+          {stepView === "types" && (
             <>
-              <button className="btn-ghost" style={{ width: "fit-content", marginBottom: 8 }} onClick={() => setActive(null)}>
+              <button className="btn-ghost" style={{ width: "fit-content", marginBottom: 8 }} onClick={() => setStepView("pets")}>
+                <Icon name="arrow_left" size={13} /> Back to pets
+              </button>
+              <div style={HINT}>{pet?.typeName} emergencies · pick a scenario</div>
+              {types.map((t) => {
+                const g = guidance.find((x) => x.emergencyType === t);
+                return (
+                  <button className="scenario" key={t} onClick={() => selectType(t)}>
+                    <div className="scenario-icon"><Icon name={SCENARIO_ICONS[t] || "first_aid"} size={18} /></div>
+                    <div className="scenario-text"><strong>{g?.title || t}</strong><span>{g?.steps.length || 0} steps · {t}</span></div>
+                    <div className="scenario-time">→</div>
+                  </button>
+                );
+              })}
+              {types.length === 0 && <div className="empty-state"><strong>No guidance for {pet?.typeName}.</strong>Try another pet or check back later.</div>}
+            </>
+          )}
+
+          {/* Step 3 — displayGuidanceWithMedia() */}
+          {stepView === "guidance" && active && (
+            <>
+              <button className="btn-ghost" style={{ width: "fit-content", marginBottom: 8 }} onClick={() => setStepView("types")}>
                 <Icon name="arrow_left" size={13} /> Back to scenarios
               </button>
               <ol className="steps-list">
@@ -367,10 +426,36 @@ function EmergencyDrawer({ onClose, guidance }: { onClose: () => void; guidance:
                   <li key={i} className={done.has(i) ? "done" : ""} onClick={() => { const n = new Set(done); n.has(i) ? n.delete(i) : n.add(i); setDone(n); }}>{step}</li>
                 ))}
               </ol>
+              {active.resources.length > 0 && (
+                <>
+                  <div style={HINT}>Supporting resources</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {active.resources.map((r) => {
+                      const isImage = r.contentType === "images" || r.contentType === "image";
+                      return (
+                        <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, border: "1px solid var(--line)", borderRadius: 10 }}>
+                          {isImage && r.mediaPath
+                            ? <button type="button" onClick={() => setZoom(r.mediaPath)} style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0, padding: 0, border: "1px solid var(--line)" }}><img src={r.mediaPath} alt={r.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></button>
+                            : <div style={{ width: 38, height: 38, borderRadius: 8, background: "var(--cream)", display: "grid", placeItems: "center", flexShrink: 0 }}><Icon name={r.contentType === "video" ? "book" : "book"} size={16} /></div>}
+                          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13 }}>{r.title}</div><div style={{ fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase" }}>{r.contentType}</div></div>
+                          {r.mediaPath && !isImage && <a href={r.mediaPath} target="_blank" rel="noopener noreferrer" className="btn-link" style={{ fontSize: 12 }}>Open →</a>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
       </aside>
+
+      {zoom && (
+        <div onClick={() => setZoom(null)} role="dialog" aria-label="Media preview"
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", zIndex: 260, display: "grid", placeItems: "center", padding: 24, cursor: "zoom-out" }}>
+          <img src={zoom} alt="Resource media" style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 12 }} />
+        </div>
+      )}
     </>
   );
 }
@@ -935,7 +1020,7 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
         </main>
       </div>
 
-      {showEmergency && <EmergencyDrawer onClose={() => setShowEmergency(false)} guidance={panels.guidance} />}
+      {showEmergency && <EmergencyDrawer onClose={() => setShowEmergency(false)} pets={panels.pets} />}
       {showAddPet && <AddPetModal petTypes={panels.petTypes} onClose={() => setShowAddPet(false)} onSubmit={handleAddPet} />}
       {openPet && <PetProfileModal pet={openPet} petTypes={panels.petTypes} onClose={() => setOpenPet(null)} onSave={handleUpdatePet} onDelete={handleDeletePet} />}
       {showInquiry && <NewInquiryModal onClose={() => setShowInquiry(false)} onSubmit={handleNewInquiry} />}
