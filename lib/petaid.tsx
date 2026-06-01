@@ -496,8 +496,8 @@ export const petaid = {
   deleteChat: (chatId: string) => req<void>(`/api/v1/chats/${chatId}`, { method: "DELETE" }),
   markChatRead: (id: string) => req<ApiChat>(`/api/v1/chats/${id}/read`, { method: "POST" }),
   listChats: () => req<ApiChat[]>("/api/v1/chats"),
-  donate: (amountCents: number, currency = "USD", recurring = false) =>
-    req<ApiDonation>("/api/v1/donations", { method: "POST", body: JSON.stringify({ amount_cents: amountCents, currency, recurring }) }),
+  donate: (amountCents: number, currency = "USD", recurring = false, paymentMethod: string | null = null) =>
+    req<ApiDonation>("/api/v1/donations", { method: "POST", body: JSON.stringify({ amount_cents: amountCents, currency, recurring, payment_method: paymentMethod }) }),
   fetchQuiz: (id: string) => req<ApiQuiz & { questions: ApiQuizQ[] }>(`/api/v1/quizzes/${id}`),
   submitQuiz: (id: string, answers: number[]) =>
     req<{ id: string; quiz_id: string; score_pct: number; passed: boolean }>(`/api/v1/quizzes/${id}/attempts`, {

@@ -594,13 +594,14 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
   const [amount, setAmount] = useState(50);
   const [custom, setCustom] = useState("");
   const [recurring, setRecurring] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("card_on_file");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const presets = [10, 25, 50, 100];
   const submit = async () => {
     setError(null);
     const final = custom ? Number(custom) : amount;
-    try { setResult(await onSubmit(final, recurring)); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
+    try { setResult(await onSubmit(final, recurring, paymentMethod)); } catch (e) { setError(e instanceof Error ? e.message : "Failed"); }
   };
   if (result) {
     const ok = result.success;
@@ -633,7 +634,11 @@ function DonationModal({ donations, onClose, onSubmit }: any) {
         </label>
       </Field>
       <Field label="Payment method" hint="Demo only — no charge is processed.">
-        <select><option>Saved card on file</option><option>Touch &apos;n Go eWallet</option><option>Online banking</option></select>
+        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+          <option value="card_on_file">Saved card on file</option>
+          <option value="ewallet">Touch &apos;n Go eWallet</option>
+          <option value="online_banking">Online banking</option>
+        </select>
       </Field>
       {error && <div className="banner error">{error}</div>}
       {donations.length > 0 && (
@@ -782,9 +787,9 @@ export function PetOwner({ snapshot }: { snapshot: Snapshot }) {
     await refresh();
     return { score: r.score_pct, passed: r.passed, perQuestion: (r as any).per_question };
   };
-  const handleDonate = async (amount: number, recurring: boolean) => {
+  const handleDonate = async (amount: number, recurring: boolean, paymentMethod: string) => {
     try {
-      const d = await petaid.donate(Math.round(amount * 100), PLATFORM_CURRENCY, recurring);
+      const d = await petaid.donate(Math.round(amount * 100), PLATFORM_CURRENCY, recurring, paymentMethod);
       await refresh();
       return { success: true, amount: d.amount_cents / 100, reference: d.transaction_ref };
     } catch (e) {
