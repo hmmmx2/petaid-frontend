@@ -545,13 +545,20 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                 <div className="admin-panel-body">
                   {fFeedback.length === 0 && <div className="admin-empty"><div className="icon-circle"><Icon name="star" size={18} /></div><strong>{q ? "No matching feedback" : "Nothing flagged"}</strong><p>{q ? "Try a different search term." : "You're all caught up."}</p></div>}
                   <div className="feedback-grid">
-                    {fFeedback.map((f) => (
-                      <div className="feedback-card flagged" key={f.id}>
-                        <div className="feedback-head"><span className="feedback-stars">{"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}</span><span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)" }}>Flagged</span></div>
-                        <div className={`feedback-comment ${!f.comment ? "empty" : ""}`}>{f.comment || "No written comment"}</div>
-                        <div className="feedback-foot"><span>{f.targetType} · #{f.targetId.slice(-5).toUpperCase()}</span><span style={{ marginLeft: "auto" }}>{relTime(f.createdAt)}</span></div>
-                      </div>
-                    ))}
+                    {fFeedback.map((f) => {
+                      const rated = panels.resources.find((r) => r.id === f.targetId);
+                      return (
+                        <div className="feedback-card flagged" key={f.id}>
+                          <div className="feedback-head"><span className="feedback-stars">{"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}</span><span className="status-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-deep)" }}>Flagged</span></div>
+                          <div className={`feedback-comment ${!f.comment ? "empty" : ""}`}>{f.comment || "No written comment"}</div>
+                          <div className="feedback-foot">
+                            <span>{f.targetType} · {rated ? <strong>{rated.title}</strong> : `#${f.targetId.slice(-5).toUpperCase()}`}</span>
+                            {rated && <button type="button" className="btn-link" style={{ fontSize: 12, marginLeft: 8 }} onClick={() => setActive("resources")}>View resource →</button>}
+                            <span style={{ marginLeft: "auto" }}>{relTime(f.createdAt)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
