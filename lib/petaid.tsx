@@ -20,7 +20,7 @@ import {
 } from "react";
 import { getSession, signIn, signOut, useSession } from "next-auth/react";
 
-const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 /* ----------------------------------------------------------- access token
  * Mirrored from the Auth.js session so client→API calls can attach a bearer.
@@ -86,7 +86,8 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
 /* ----------------------------------------------------------- API shapes */
 type ApiPetType = { id: string; name: string; description: string; icon_emoji: string; icon_bg: string };
 type ApiPet = { id: string; name: string; breed: string | null; age_years: number | null; health_notes: string; image_url?: string | null; icon_emoji?: string | null; pet_type: ApiPetType };
-type ApiResource = { id: string; title: string; content_type: string; status: string; media_path: string | null; pet_type: ApiPetType };
+type ApiResource = { id: string; title: string; content_type: string; status: string; media_key: string | null; media_url: string | null; pet_type: ApiPetType };
+export type UploadUrlResult = { upload_url: string; public_url: string; key: string; expires_in: number };
 type ApiGuidance = { id: string; title: string; emergency_type: string; summary: string; steps: string[]; pet_type: ApiPetType; resources: ApiResource[] };
 type ApiQuizQ = { prompt: string; options: string[]; answer_index: number };
 type ApiQuiz = { id: string; title: string; passing_score: number; resource_id: string; questions: ApiQuizQ[] };
@@ -113,9 +114,9 @@ export type Account = {
 };
 export type PetType = { id: string; name: string; emoji: string; bg: string };
 export type Pet = { id: string; name: string; breed: string; age: number; emoji: string; bg: string; typeId: string; typeName: string; notes: string; image: string | null; icon: string | null };
-export type GuidanceResource = { id: string; title: string; contentType: string; mediaPath: string | null };
+export type GuidanceResource = { id: string; title: string; contentType: string; mediaUrl: string | null };
 export type Guidance = { id: string; title: string; emergencyType: string; steps: string[]; summary: string; petTypeIds: string[]; petTypeNames: string[]; resourceCount: number; resources: GuidanceResource[] };
-export type Resource = { id: string; title: string; contentType: string; status: string; petTypeIds: string[]; petTypeName: string };
+export type Resource = { id: string; title: string; contentType: string; status: string; petTypeIds: string[]; petTypeName: string; mediaUrl: string | null };
 export type QuizQuestion = { prompt: string; choices: string[] };
 export type Quiz = { id: string; title: string; passingScore: number; questions: QuizQuestion[] };
 export type QuizAttempt = { quizId: string; score: number; passed: boolean; takenAt: number };
@@ -218,11 +219,12 @@ const mapGuidance = (g: ApiGuidance): Guidance => ({
   id: g.id, title: g.title, emergencyType: g.emergency_type, steps: g.steps, summary: g.summary,
   petTypeIds: g.pet_type ? [g.pet_type.id] : [], petTypeNames: g.pet_type ? [g.pet_type.name] : [],
   resourceCount: g.resources?.length || 0,
-  resources: (g.resources || []).map((r) => ({ id: r.id, title: r.title, contentType: r.content_type, mediaPath: r.media_path })),
+  resources: (g.resources || []).map((r) => ({ id: r.id, title: r.title, contentType: r.content_type, mediaUrl: r.media_url ?? null })),
 });
 const mapResource = (r: ApiResource): Resource => ({
   id: r.id, title: r.title, contentType: r.content_type, status: r.status,
   petTypeIds: r.pet_type ? [r.pet_type.id] : [], petTypeName: r.pet_type?.name || "",
+  mediaUrl: r.media_url ?? null,
 });
 const mapQuiz = (q: ApiQuiz): Quiz => ({
   id: q.id, title: q.title, passingScore: q.passing_score,
@@ -508,8 +510,10 @@ export const petaid = {
     req("/api/v1/feedback", { method: "POST", body: JSON.stringify({ comment: "", flagged: false, ...b }) }),
   publishResource: (id: string) => req(`/api/v1/resources/${id}/publish`, { method: "POST" }),
   petTypes: () => req<ApiPetType[]>("/api/v1/pet-types"),
-  createResource: (b: { title: string; content_type: string; pet_type_id: string; media_path: string; size_bytes: number }) =>
+  createResource: (b: { title: string; content_type: string; pet_type_id: string; media_key?: string | null }) =>
     req<ApiResource>("/api/v1/resources", { method: "POST", body: JSON.stringify(b) }),
+  requestUploadUrl: (b: { filename: string; content_type: string; expected_bytes: number }) =>
+    req<UploadUrlResult>("/api/v1/media/upload-url", { method: "POST", body: JSON.stringify(b) }),
 };
 
 /* ----------------------------------------------------------- React glue */

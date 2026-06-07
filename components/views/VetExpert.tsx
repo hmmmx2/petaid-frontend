@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ApiError, petaid, usePetAid, can, Permission, money, PLATFORM_CURRENCY, type Chat, type Snapshot, type VetPanels } from "@/lib/petaid";
 import { BusyButton, ConfirmDialog, Field, Icon, ImageGallery, Modal, clickable, relTime, maskReference, useToast } from "@/components/ui";
 import { useChatRealtime } from "@/lib/chatRealtime";
+import { uploadToR2 } from "@/lib/uploads";
 import { ChatThread } from "./ChatThread";
 import { TopbarActions } from "./Popovers";
 import { Settings } from "./Settings";
@@ -197,18 +198,57 @@ function NewResourceModal({ petTypes, onClose, onSubmit }: any) {
   const [contentType, setContentType] = useState("doc");
   const [petTypeIds, setPetTypeIds] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const isUploading = uploadProgress !== null;
+
+  const MIME_FOR_CT: Record<string, string[]> = {
+    doc: ["application/pdf"],
+    image: ["image/jpeg", "image/png", "image/webp"],
+    video: ["video/mp4"],
+  };
+  const SIZE_CAP: Record<string, number> = { doc: 10 * 1024 * 1024, image: 10 * 1024 * 1024, video: 100 * 1024 * 1024 };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0] ?? null;
+    if (!picked) { setFile(null); return; }
+    const allowed = MIME_FOR_CT[contentType] ?? [];
+    if (!allowed.includes(picked.type)) {
+      setErrors((prev) => ({ ...prev, file: `Invalid file type for ${contentType}. Allowed: ${allowed.join(", ")}` }));
+      setFile(null);
+      return;
+    }
+    const cap = SIZE_CAP[contentType] ?? 10 * 1024 * 1024;
+    if (picked.size > cap) {
+      const mb = Math.round(cap / (1024 * 1024));
+      setErrors((prev) => ({ ...prev, file: `File exceeds the ${mb} MB limit for ${contentType}.` }));
+      setFile(null);
+      return;
+    }
+    setErrors((prev) => { const { file: _, ...rest } = prev; return rest; });
+    setFile(picked);
+  };
+
   const submit = async (publish: boolean) => {
     setErrors({});
-    try { await onSubmit({ title, contentType, petTypeIds }, publish); onClose(); }
-    catch (e) { if (e instanceof ApiError && e.field) setErrors({ [e.field]: e.message }); else setErrors({ form: e instanceof Error ? e.message : "Failed" }); }
+    try {
+      await onSubmit({ title, contentType, petTypeIds, file }, publish, setUploadProgress);
+      onClose();
+    } catch (e) {
+      setUploadProgress(null);
+      if (e instanceof ApiError && e.field) setErrors({ [e.field]: e.message });
+      else setErrors({ form: e instanceof Error ? e.message : "Failed" });
+    }
   };
+
+  const fileLabel = file ? `${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)` : "Click to choose a file";
+
   return (
     <Modal title="New resource" subtitle="Create a content item grouped by Pet Type." onClose={onClose}
-      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><BusyButton className="btn-secondary" onClick={() => submit(false)} busyLabel="Saving…">Save draft</BusyButton><BusyButton className="btn-primary" onClick={() => submit(true)} busyLabel="Publishing…">Save &amp; publish</BusyButton></>}>
+      footer={<><button className="btn-secondary" onClick={onClose} disabled={isUploading}>Cancel</button><BusyButton className="btn-secondary" onClick={() => submit(false)} busyLabel="Saving…" disabled={isUploading}>Save draft</BusyButton><BusyButton className="btn-primary" onClick={() => submit(true)} busyLabel="Publishing…" disabled={isUploading}>Save &amp; publish</BusyButton></>}>
       <Field label="Title" error={errors.title}><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Dog CPR — Step-by-Step Video" maxLength={120} /></Field>
       <Field label="Content type">
-        <select value={contentType} onChange={(e) => setContentType(e.target.value)}><option value="doc">Document</option><option value="video">Video</option><option value="image">Image set</option></select>
+        <select value={contentType} onChange={(e) => { setContentType(e.target.value); setFile(null); }}><option value="doc">Document (PDF)</option><option value="video">Video (MP4)</option><option value="image">Image (JPEG / PNG / WebP)</option></select>
       </Field>
       <Field label="Applies to pet types" hint="Pick one or more." error={errors.pet_type_id}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -218,12 +258,22 @@ function NewResourceModal({ petTypes, onClose, onSubmit }: any) {
           })}
         </div>
       </Field>
-      <Field label="Attach media (optional)">
-        <label style={{ padding: 14, border: "1.5px dashed var(--line-2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-          <Icon name="upload" size={16} /><span style={{ fontSize: 13 }}>{fileName || "Click to choose a file (≤ 25 MB)"}</span>
-          <input type="file" hidden onChange={(e) => setFileName(e.target.files?.[0]?.name || null)} />
+      <Field label="Attach media (optional)" error={errors.file}>
+        <label style={{ padding: 14, border: "1.5px dashed var(--line-2)", borderRadius: 10, display: "flex", alignItems: "center", gap: 10, cursor: isUploading ? "not-allowed" : "pointer", opacity: isUploading ? 0.6 : 1 }}>
+          <Icon name="upload" size={16} /><span style={{ fontSize: 13 }}>{fileLabel}</span>
+          <input type="file" hidden disabled={isUploading} accept={MIME_FOR_CT[contentType]?.join(",") ?? "*"} onChange={handleFileChange} />
         </label>
       </Field>
+      {isUploading && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--ink-2)", marginBottom: 4 }}>
+            <span>Uploading…</span><span>{uploadProgress}%</span>
+          </div>
+          <div style={{ height: 6, borderRadius: 3, background: "var(--gray)", overflow: "hidden" }}>
+            <div style={{ height: "100%", borderRadius: 3, background: "var(--accent)", width: `${uploadProgress}%`, transition: "width 0.2s ease" }} />
+          </div>
+        </div>
+      )}
       {errors.form && <div className="banner error">{errors.form}</div>}
     </Modal>
   );
@@ -272,14 +322,41 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
     setOpenInquiry(null);
     push("Inquiry closed.", "success");
   };
-  const createAndMaybePublish = async (data: any, publish: boolean) => {
+  const createAndMaybePublish = async (data: any, publish: boolean, setProgress?: (p: number | null) => void) => {
     const ctMap: Record<string, string> = { doc: "pdf", image: "images", video: "video" };
     const petTypeId = data.petTypeIds[0] || petTypes[0]?.id;
     if (!petTypeId) throw new ApiError(422, { code: "invalid_input", detail: "Pick at least one pet type.", field: "pet_type_id" });
-    const slug = data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+
+    let mediaKey: string | null = null;
+
+    if (data.file) {
+      const f: File = data.file;
+      setProgress?.(0);
+      let urlResult;
+      try {
+        urlResult = await petaid.requestUploadUrl({ filename: f.name, content_type: f.type, expected_bytes: f.size });
+      } catch (e) {
+        setProgress?.(null);
+        if (e instanceof ApiError && e.status === 429) throw new ApiError(429, { code: "rate_limited", detail: "Upload limit reached. Try again in an hour.", field: "file" });
+        if (e instanceof ApiError && e.field === "content_type") throw new ApiError(422, { code: "invalid_input", detail: "Unsupported file type.", field: "file" });
+        if (e instanceof ApiError && e.field === "expected_bytes") throw new ApiError(422, { code: "invalid_input", detail: "File exceeds the size limit.", field: "file" });
+        throw e;
+      }
+      try {
+        await uploadToR2(f, urlResult.upload_url, (pct) => setProgress?.(pct));
+      } catch (e) {
+        setProgress?.(null);
+        throw new Error(e instanceof Error ? e.message : "Upload failed — please try again.");
+      }
+      mediaKey = urlResult.key;
+      setProgress?.(null);
+    }
+
     const r = await petaid.createResource({
-      title: data.title, content_type: ctMap[data.contentType] || "pdf",
-      pet_type_id: petTypeId, media_path: `https://media.petaid.app/${slug}.${data.contentType === "video" ? "mp4" : data.contentType === "image" ? "png" : "pdf"}`, size_bytes: 1024,
+      title: data.title,
+      content_type: ctMap[data.contentType] || "pdf",
+      pet_type_id: petTypeId,
+      media_key: mediaKey,
     });
     if (publish) await petaid.publishResource((r as any).id);
     await refresh();
@@ -508,7 +585,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                         {fResources.length === 0 && <tr><td colSpan={4} style={{ textAlign: "center", padding: 24, color: "var(--ink-3)", fontSize: 12.5 }}>{q ? "No resources match your search." : "No resources yet."}</td></tr>}
                         {fResources.map((r) => (
                           <tr key={r.id}>
-                            <td><div className="res-cell"><div className={`res-thumb ${r.contentType}`}><Icon name={r.contentType === "video" ? "book" : r.contentType === "images" ? "paw" : "book"} size={16} /></div><div><div className="res-title">{r.title}</div><div className="res-meta">{r.contentType.toUpperCase()} · #{r.id.slice(-5).toUpperCase()}</div></div></div></td>
+                            <td><div className="res-cell"><div className={`res-thumb ${r.contentType}`}><Icon name={r.contentType === "video" ? "play" : r.contentType === "images" ? "paw" : "book"} size={16} /></div><div><div className="res-title">{r.title}{r.mediaUrl && <a href={r.mediaUrl} target="_blank" rel="noreferrer" style={{ marginLeft: 6, fontSize: 11, color: "var(--accent)", verticalAlign: "middle" }} title="View media">↗</a>}</div><div className="res-meta">{r.contentType.toUpperCase()} · #{r.id.slice(-5).toUpperCase()}</div></div></div></td>
                             <td><div className="pet-types">{r.petTypeName ? <span className="chip">{r.petTypeName}</span> : <span className="chip">All</span>}</div></td>
                             <td><span className={`status-pill ${r.status}`}>{r.status}</span></td>
                             <td><div className="row-actions">{r.status === "draft" ? <button className="row-btn" onClick={() => publishResource(r.id)}>Publish</button> : <button className="row-btn" disabled style={{ opacity: 0.5 }}>Published</button>}</div></td>

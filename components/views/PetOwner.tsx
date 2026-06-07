@@ -434,11 +434,11 @@ function EmergencyDrawer({ onClose, pets }: { onClose: () => void; pets: any[] }
                       const isImage = r.contentType === "images" || r.contentType === "image";
                       return (
                         <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, border: "1px solid var(--line)", borderRadius: 10 }}>
-                          {isImage && r.mediaPath
-                            ? <button type="button" onClick={() => setZoom(r.mediaPath)} style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0, padding: 0, border: "1px solid var(--line)" }}><img src={r.mediaPath} alt={r.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></button>
-                            : <div style={{ width: 38, height: 38, borderRadius: 8, background: "var(--cream)", display: "grid", placeItems: "center", flexShrink: 0 }}><Icon name={r.contentType === "video" ? "book" : "book"} size={16} /></div>}
+                          {isImage && r.mediaUrl
+                            ? <button type="button" onClick={() => setZoom(r.mediaUrl)} style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", flexShrink: 0, padding: 0, border: "1px solid var(--line)" }}><img src={r.mediaUrl} alt={r.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></button>
+                            : <div style={{ width: 38, height: 38, borderRadius: 8, background: "var(--cream)", display: "grid", placeItems: "center", flexShrink: 0 }}><Icon name={r.contentType === "video" ? "play" : r.contentType === "pdf" ? "book" : "paw"} size={16} /></div>}
                           <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: 13 }}>{r.title}</div><div style={{ fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase" }}>{r.contentType}</div></div>
-                          {r.mediaPath && !isImage && <a href={r.mediaPath} target="_blank" rel="noopener noreferrer" className="btn-link" style={{ fontSize: 12 }}>Open →</a>}
+                          {r.mediaUrl && !isImage && <a href={r.mediaUrl} target="_blank" rel="noopener noreferrer" className="btn-link" style={{ fontSize: 12 }}>Open →</a>}
                         </div>
                       );
                     })}
