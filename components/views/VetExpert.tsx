@@ -363,6 +363,16 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
     push(publish ? "Resource published." : "Draft saved.", "success");
   };
   const publishResource = async (id: string) => { await petaid.publishResource(id); await refresh(); push("Resource published.", "success"); };
+  const deleteResource = async (r: { id: string; title: string }) => {
+    if (!window.confirm(`Delete "${r.title}"? This also removes its uploaded media and cannot be undone.`)) return;
+    try {
+      await petaid.deleteResource(r.id);
+      await refresh();
+      push("Resource deleted.", "success");
+    } catch (e) {
+      push(e instanceof ApiError ? e.message : "Could not delete the resource.", "danger");
+    }
+  };
   // First message on an owner-initiated chat auto-joins the vet (→ active).
   // ChatThread calls this before sending the message.
   const joinIfNeeded = async (c: Chat) => {
@@ -588,7 +598,7 @@ export function VetExpert({ snapshot }: { snapshot: Snapshot }) {
                             <td><div className="res-cell"><div className={`res-thumb ${r.contentType}`}><Icon name={r.contentType === "video" ? "play" : r.contentType === "images" ? "paw" : "book"} size={16} /></div><div><div className="res-title">{r.title}{r.mediaUrl && <a href={r.mediaUrl} target="_blank" rel="noreferrer" style={{ marginLeft: 6, fontSize: 11, color: "var(--accent)", verticalAlign: "middle" }} title="View media">↗</a>}</div><div className="res-meta">{r.contentType.toUpperCase()} · #{r.id.slice(-5).toUpperCase()}</div></div></div></td>
                             <td><div className="pet-types">{r.petTypeName ? <span className="chip">{r.petTypeName}</span> : <span className="chip">All</span>}</div></td>
                             <td><span className={`status-pill ${r.status}`}>{r.status}</span></td>
-                            <td><div className="row-actions">{r.status === "draft" ? <button className="row-btn" onClick={() => publishResource(r.id)}>Publish</button> : <button className="row-btn" disabled style={{ opacity: 0.5 }}>Published</button>}</div></td>
+                            <td><div className="row-actions">{r.status === "draft" ? <button className="row-btn" onClick={() => publishResource(r.id)}>Publish</button> : <button className="row-btn" disabled style={{ opacity: 0.5 }}>Published</button>}<button className="row-btn" onClick={() => deleteResource(r)} style={{ color: "var(--danger, #c0392b)" }} title="Delete resource">Delete</button></div></td>
                           </tr>
                         ))}
                       </tbody>

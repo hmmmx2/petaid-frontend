@@ -509,6 +509,7 @@ export const petaid = {
   submitFeedback: (b: { target_type: string; target_id: string; rating: number; comment?: string; flagged?: boolean }) =>
     req("/api/v1/feedback", { method: "POST", body: JSON.stringify({ comment: "", flagged: false, ...b }) }),
   publishResource: (id: string) => req(`/api/v1/resources/${id}/publish`, { method: "POST" }),
+  deleteResource: (id: string) => req<void>(`/api/v1/resources/${id}`, { method: "DELETE" }),
   petTypes: () => req<ApiPetType[]>("/api/v1/pet-types"),
   createResource: (b: { title: string; content_type: string; pet_type_id: string; media_key?: string | null }) =>
     req<ApiResource>("/api/v1/resources", { method: "POST", body: JSON.stringify(b) }),
