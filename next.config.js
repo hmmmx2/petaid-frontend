@@ -8,13 +8,16 @@ const isDev = process.env.NODE_ENV !== "production";
 // FastAPI backend (fetch), and the two web-font CDNs. Inline styles are used
 // throughout (style={{…}}), so 'unsafe-inline' is required for style-src; dev
 // also needs 'unsafe-eval' + ws: for React Fast Refresh.
+//
+// R2 domains are needed for presigned PUT uploads (*.r2.cloudflarestorage.com)
+// and for rendering images from the public R2 CDN (*.r2.dev).
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.supabase.co",
+  "img-src 'self' data: blob: https://*.supabase.co https://*.r2.dev",
   "font-src 'self' https://cdn.fontshare.com https://fonts.gstatic.com data:",
-  `connect-src 'self' ${API} ${WS_API} https://cdn.fontshare.com https://fonts.gstatic.com${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${API} ${WS_API} https://cdn.fontshare.com https://fonts.gstatic.com https://*.r2.cloudflarestorage.com https://*.r2.dev${isDev ? " ws: wss:" : ""}`,
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
